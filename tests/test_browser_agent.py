@@ -206,3 +206,24 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
             payload,count=await agent.collect(self.page,f['pair'],'USD',agent.DEFAULT_SELECTORS)
         self.assertEqual(count,3);self.assertEqual(len(payload['flight']['flights']),3)
         app.ingest(payload);self.assertEqual(len(app.state()['excluded']),3);self.assertEqual(app.state()['fares'],[])
+    async def test_dashboard_renders_nonqualifying_rank_and_currency_explanation(self):
+        from urllib.parse import urlparse
+        f,out,ret=self.fare_fixture()
+        offer=agent.parse_fare_panel(f['panels'][0],out,ret,f['pair'],'USD')
+        app.ingest(dict(flight=dict(success=True,tripType='roundTrip',flights=[offer])))
+        state=app.state();errors=[];self.page.on('pageerror',lambda e:errors.append(str(e)))
+        async def serve(route):
+            path=urlparse(route.request.url).path
+            if path=='/api/session':await route.fulfill(json=dict(csrf='test'))
+            elif path=='/api/state':await route.fulfill(json=state)
+            else:
+                name='index.html' if path=='/' else path.lstrip('/')
+                content={'index.html':'text/html; charset=utf-8','app.js':'text/javascript','style.css':'text/css'}[name]
+                await route.fulfill(content_type=content,body=(app.ROOT/'web'/name).read_bytes())
+        await self.page.route('http://bali.test/**',serve)
+        await self.page.goto('http://bali.test/')
+        await self.page.wait_for_function("document.querySelector('#comparison').innerText.includes('USD #1')")
+        self.assertIn('USD 1650.00',await self.page.locator('#lowest').inner_text())
+        self.assertIn('No verified offer',await self.page.locator('#recommendation').inner_text())
+        self.assertIn('Checked baggage included',await self.page.locator('#comparison').inner_text())
+        self.assertIn('Current search: AUD',await self.page.locator('#currencyNote').inner_text());self.assertEqual(errors,[])

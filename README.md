@@ -12,7 +12,7 @@ A Brisbane ↔ Bali return-flight dashboard with SQLite history, price-drop aler
 
 ## Current readiness
 
-**43 tests pass**, including seventeen real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
+**48 tests pass**, including eighteen real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
 
 **Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. An uploaded live card diagnostic now confirms separate outbound selection cards. The first outbound-to-return transition is implemented and tested against that captured layout; return cards have also been captured and their Select step is tested against the observed text. Fare panels have now been captured; their per-leg weight allowances and checked-inclusive exclusion are supported. The multi-step runner now parses captured outbound, return and fare-package layouts. A complete automatic run against live Trip.com is still pending verification on the user’s Windows browser. It stops on unsupported panels, mismatched totals, unverified dates or access challenges. No automatic searches or notifications have been enabled.
 
@@ -86,3 +86,9 @@ node --check web/app.js
 ```
 
 Browser tests require Playwright and Chromium. CI installs them and runs the same tests. Browser fixtures are synthetic and are not evidence of real Trip.com prices, account login or current DOM compatibility.
+
+## Ranking and changed currency
+
+The dashboard now ranks observed fares within each original currency, including baggage-excluded and unverified offers with explicit reasons. Best matching offer is separate from cheapest observed; neither label asserts whole-market coverage. USD and AUD are never numerically mixed or implicitly converted. The alert target does not hide higher-priced offers.
+
+Changing quote currency, date pairs or selectors invalidates a resume checkpoint. Start the next scan without `--resume`; saved observations remain. Changing the alert target alone does not invalidate the checkpoint. Existing USD quotes stay visible in the comparison while a fresh AUD scan retrieves AUD data.

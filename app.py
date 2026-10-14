@@ -131,14 +131,29 @@ def ingest(p,source='Trip.com live tool'):
         return dict(imported=len(fares),duplicate=False,alerts=messages)
 def state():
     with connect() as c:
-        s=settings(c); fares=sorted((f for f in latest(c) if eligible(f,s)),key=lambda f:(not f['nonstop'],f['price'],f['duration']))
-        for f in fares: f['stale']=(datetime.now(timezone.utc)-datetime.fromisoformat(f['observed'])).total_seconds()>86400
+        s=settings(c); observed=latest(c)
+        for f in observed: f['stale']=(datetime.now(timezone.utc)-datetime.fromisoformat(f['observed'])).total_seconds()>86400
+        fares=sorted((f for f in observed if eligible(f,s)),key=lambda f:(not f['nonstop'],f['price'],f['duration']))
+        # Compare within each original currency, retaining the user's baggage rules
+        # for qualification while making rejected/unknown offers visible.
+        comparison=[]
+        for f in observed:
+            if not eligible(f,dict(s,currency=f['currency'],carry_on=False,exclude_checked=False)): continue
+            reasons=[]
+            if s['carry_on'] and f['carry_on'] is not True: reasons.append('Carry-on excluded' if f['carry_on'] is False else 'Carry-on unknown')
+            if s['exclude_checked'] and f['checked'] is not False: reasons.append('Checked baggage included' if f['checked'] is True else 'Checked baggage unknown')
+            if f['currency']!=s['currency']: reasons.append(f"Quoted in {f['currency']}; current search uses {s['currency']}")
+            comparison.append(dict(f,qualifies=eligible(f,s),reasons=reasons))
+        comparison.sort(key=lambda f:(f['currency']!=s['currency'],f['currency'],f['price'],f['duration']))
+        ranks={}
+        for f in comparison:
+            ranks[f['currency']]=ranks.get(f['currency'],0)+1;f['rank']=ranks[f['currency']]
         runs=[dict(r) for r in c.execute('SELECT * FROM runs ORDER BY observed DESC LIMIT 40')]; history=[]
         for r in reversed(runs):
             rows=[json.loads(v[0]) for v in c.execute('SELECT value FROM fares WHERE run_id=?',(r['id'],))]
             prices=[f['price'] for f in rows if eligible(f,s)]
             if prices: history.append(dict(observed=r['observed'],price=min(prices),source=r['source']))
-        return dict(settings=s,fares=fares,excluded=[f for f in latest(c) if f.get('trip_type')==s['trip_type'] and (f.get('checked') is True or f.get('carry_on') is False)],verification=[f for f in latest(c) if f.get('trip_type')==s['trip_type'] and (f.get('carry_on') is None or f.get('checked') is None)],browser_status=browser_status(),history=history,runs=runs,
+        return dict(settings=s,fares=fares,comparison=comparison,best_match=fares[0] if fares else None,lowest_observed=comparison[0] if comparison else None,excluded=[f for f in observed if f.get('trip_type')==s['trip_type'] and (f.get('checked') is True or f.get('carry_on') is False)],verification=[f for f in observed if f.get('trip_type')==s['trip_type'] and (f.get('carry_on') is None or f.get('checked') is None)],browser_status=browser_status(),history=history,runs=runs,
             alerts=[dict(r) for r in c.execute('SELECT * FROM alerts ORDER BY created DESC LIMIT 30')],
             reports=[dict(r) for r in c.execute('SELECT * FROM reports ORDER BY created DESC LIMIT 10')],
             jobs=[dict(r) for r in c.execute('SELECT * FROM jobs ORDER BY updated DESC LIMIT 10')],

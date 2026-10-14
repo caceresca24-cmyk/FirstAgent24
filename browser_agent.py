@@ -11,6 +11,12 @@ import app
 DEFAULT_SELECTORS={'cards':'[data-testid="flight-card"], [class*="flight-item"], [class*="FlightItem"], article', 'text':'body'}
 class ExtractionError(ValueError): pass
 
+class CheckpointChanged(ExtractionError): pass
+
+def search_identity(plan,selectors):
+    # Alert target, drop threshold and schedule do not change fetched flight data.
+    return hashlib.sha256(json.dumps(dict(pairs=plan['pairs'],currency=plan['settings']['currency'],selectors=selectors),sort_keys=True).encode()).hexdigest()
+
 def parse_selection_card(text):
     """Read an observed single-leg selection card; never use its price as a saved trip."""
     lines=[line.strip() for line in text.splitlines() if line.strip()]
@@ -307,11 +313,11 @@ async def browser_main(args):
         configured=json.loads(Path(args.selectors).read_text())
         if set(configured)!=set(selectors) or not all(isinstance(v,str) and v for v in configured.values()): raise ExtractionError('Selectors file must contain nonempty cards and text selectors.')
         selectors.update(configured)
-    identity=hashlib.sha256(json.dumps(dict(pairs=pairs,currency=s['currency'],selectors=selectors),sort_keys=True).encode()).hexdigest()
+    identity=search_identity(plan,selectors)
     checkpoint=profile/'scan-checkpoint.json'; start=0
     if args.resume and checkpoint.exists():
         cp=json.loads(checkpoint.read_text())
-        if cp.get('identity')!=identity: raise ExtractionError('Search plan changed. Start without --resume.')
+        if cp.get('identity')!=identity: raise CheckpointChanged(f"Search dates, currency or selectors changed. Saved fares are retained. Run again WITHOUT --resume to start the current {s['currency']} search; prices are not converted automatically.")
         start=cp['next_index']
     def save(index):
         temp=checkpoint.with_suffix('.tmp'); temp.write_text(json.dumps(dict(identity=identity,next_index=index))); temp.replace(checkpoint)
@@ -362,7 +368,9 @@ def main():
     try: asyncio.run(browser_main(args));return 0
     except (Exception,KeyboardInterrupt) as e:
         print('Browser agent stopped: '+str(e),file=sys.stderr)
-        try: write_status(dict(app.browser_status(),status='blocked',message=str(e)[:500]))
+        status=dict(app.browser_status(),status='blocked',message=str(e)[:500])
+        if isinstance(e,CheckpointChanged): status.update(completed=0,next_index=0)
+        try: write_status(status)
         except Exception as status_error: print('Could not save browser status: '+str(status_error),file=sys.stderr)
         return 1
 if __name__=='__main__':sys.exit(main())
