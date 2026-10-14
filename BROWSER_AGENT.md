@@ -61,3 +61,13 @@ python -m unittest discover -s tests -v
 Real Chromium tests use explicitly synthetic fixtures and intercepted test navigations. They verify parsing, database ingestion, navigation/checkpoints, incomplete-result rejection and verification stops. They do not test real prices, the user's login or Trip.com's current DOM. Core tests run without the optional Playwright package; browser tests require the package plus Chromium.
 
 No unattended browser schedule or external notifications have been activated. The existing provider scheduler remains separate. Connect the runner to recurring execution only after live extraction and rate handling are verified.
+
+## If the live scan reports unreadable cards
+
+The error means the rendered page does not match the currently supported complete-return-card layout. Do not remove itinerary validation or combine arbitrary displayed leg prices. To inspect the live layout without exposing your login session:
+
+```sh
+python browser_agent.py diagnose
+```
+
+Wait for results in the opened browser, leave that screen visible and press Enter in the terminal. The command writes `data/flight-card-diagnostics.json`, containing up to 20 result cards' visible text, element tag names and button labels. It does not collect cookies, passwords, browser storage, full-page HTML or the account header, and does not import any prices. Review the file before sharing and remove any personal information accidentally present in a card. A screenshot of the flight-results screen can additionally show whether return flights require a second selection step.

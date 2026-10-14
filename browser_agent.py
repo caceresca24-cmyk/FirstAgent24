@@ -71,7 +71,19 @@ async def collect(page,pair,currency,selectors):
 
 def write_status(value):
     path=app.DB.parent/'browser-status.json'; path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=path.with_suffix('.tmp'); temporary.write_text(json.dumps(dict(updated=app.now(),**value),indent=2)); temporary.replace(path)
+    temporary=path.with_suffix('.tmp'); temporary.write_text(json.dumps({**value,'updated':app.now()},indent=2),encoding='utf-8'); temporary.replace(path)
+
+async def capture_cards(page,selectors,pair,currency):
+    """Capture result-card text and button labels, never cookies or full-page HTML."""
+    cards=page.locator(selectors['cards']); items=[]
+    for i in range(min(await cards.count(),20)):
+        card=cards.nth(i)
+        items.append(dict(text=(await card.inner_text())[:6000],
+            tag=await card.evaluate('(e)=>e.tagName'),
+            buttons=await card.locator('button,[role="button"]').all_text_contents()))
+    return dict(purpose='Flight-card layout diagnosis only; not imported prices',pair=pair,
+        currency=currency,card_count=await cards.count(),cards=items,
+        note='Review before sharing. No cookies, passwords, storage, page HTML or account header are collected.')
 
 async def run_scan(page,pairs,currency,selectors,limit,start_index=0,delay=15,save_checkpoint=None):
     completed=0
@@ -105,7 +117,7 @@ async def run_scan(page,pairs,currency,selectors,limit,start_index=0,delay=15,sa
 async def browser_main(args):
     from playwright.async_api import async_playwright
     plan=app.plan(); pairs=plan['pairs']; s=plan['settings']
-    if args.command=='scan' and (s['paused'] or s['trip_type']!='roundTrip' or not pairs): raise ExtractionError('Enable an unexpired return-trip watch first.')
+    if args.command in ('scan','diagnose') and (s['paused'] or s['trip_type']!='roundTrip' or not pairs): raise ExtractionError('Enable an unexpired return-trip watch first.')
     profile=Path(args.profile).resolve(); profile.mkdir(parents=True,exist_ok=True)
     os.chmod(profile,0o700)
     selectors=dict(DEFAULT_SELECTORS)
@@ -121,7 +133,7 @@ async def browser_main(args):
         start=cp['next_index']
     def save(index):
         temp=checkpoint.with_suffix('.tmp'); temp.write_text(json.dumps(dict(identity=identity,next_index=index))); temp.replace(checkpoint)
-    launch=dict(headless=args.command!='login' and not args.headed)
+    launch=dict(headless=args.command not in ('login','diagnose') and not args.headed)
     if args.executable: launch['executable_path']=args.executable
     # Preserve configured proxy policy when the environment uses one.
     proxy=os.environ.get('HTTPS_PROXY')
@@ -133,12 +145,20 @@ async def browser_main(args):
             if args.command=='login':
                 await page.goto('https://www.trip.com/',timeout=45000)
                 await asyncio.to_thread(input,'Sign in yourself in this browser, then press Enter here to save the session. ')
+            elif args.command=='diagnose':
+                pair=pairs[0]
+                await page.goto(search_url(pair,s['currency']),wait_until='domcontentloaded',timeout=45000)
+                await asyncio.to_thread(input,'Wait for the flight results to appear. Leave the results visible, then press Enter here to capture flight-card text only. ')
+                data=await capture_cards(page,selectors,pair,s['currency'])
+                path=app.DB.parent/'flight-card-diagnostics.json';path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+                print(f'Saved {data["card_count"]} card(s) to {path}. Review the file before sharing; no flight observations were imported.',flush=True)
             else:
                 await run_scan(page,pairs,s['currency'],selectors,args.max_pairs,start,args.delay,save)
         finally: await context.close()
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument('command',choices=['login','scan','plan'])
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('command',choices=['login','scan','plan','diagnose'])
     p.add_argument('--profile',default=str(app.ROOT/'browser_data')); p.add_argument('--headed',action='store_true');p.add_argument('--resume',action='store_true')
     p.add_argument('--max-pairs',type=int,default=1);p.add_argument('--delay',type=float,default=15);p.add_argument('--selectors');p.add_argument('--executable')
     args=p.parse_args()
@@ -146,5 +166,8 @@ def main():
     if args.command=='plan': print(json.dumps(app.plan(),indent=2));return 0
     try: asyncio.run(browser_main(args));return 0
     except (Exception,KeyboardInterrupt) as e:
-        write_status(dict(app.browser_status(),status='blocked',message=str(e)[:500]));print('Browser agent stopped: '+str(e),file=sys.stderr);return 1
+        print('Browser agent stopped: '+str(e),file=sys.stderr)
+        try: write_status(dict(app.browser_status(),status='blocked',message=str(e)[:500]))
+        except Exception as status_error: print('Could not save browser status: '+str(status_error),file=sys.stderr)
+        return 1
 if __name__=='__main__':sys.exit(main())

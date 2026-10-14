@@ -47,6 +47,22 @@ class ReturnTrips(unittest.TestCase):
         self.assertEqual(agent.blockage('Please verify you are human'),'verification_required')
         self.assertEqual(agent.blockage('Sign in to continue'),'login_required');self.assertIsNone(agent.blockage('Sign in | Flight results'))
 
+    def test_status_can_be_updated_after_failure(self):
+        agent.write_status(dict(status='running'))
+        old=app.browser_status()
+        agent.write_status(dict(old,status='blocked',message='unreadable card'))
+        self.assertEqual(app.browser_status()['message'],'unreadable card')
+
+    def test_main_reports_original_failure_without_traceback(self):
+        import io,contextlib
+        from unittest.mock import AsyncMock
+        agent.write_status(dict(status='blocked',next_index=2))
+        error=io.StringIO()
+        with patch.object(sys,'argv',['browser_agent.py','scan']),patch.object(agent,'browser_main',new=AsyncMock(side_effect=agent.ExtractionError('Both reciprocal route legs must be visible.'))),contextlib.redirect_stderr(error):
+            self.assertEqual(agent.main(),1)
+        self.assertIn('Both reciprocal route legs',error.getvalue())
+        self.assertNotIn('Traceback',error.getvalue());self.assertEqual(app.browser_status()['next_index'],2)
+
 @unittest.skipUnless(importlib.util.find_spec('playwright'),'Optional Playwright not installed')
 class BrowserFlow(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -64,6 +80,13 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
         await self.page.set_content('<article>'+TEXT.replace('\n','<br>')+'</article>')
         payload,count=await agent.collect(self.page,PAIR,'AUD',agent.DEFAULT_SELECTORS)
         app.ingest(payload,source='Trip.com browser');self.assertEqual(count,1);self.assertEqual(app.state()['fares'][0]['price'],450)
+
+    async def test_diagnostics_collect_only_card_text_and_controls(self):
+        await self.page.set_content('<header>Private account header</header><article>'+TEXT.replace('\n','<br>')+'<button>Select outbound</button></article>')
+        data=await agent.capture_cards(self.page,agent.DEFAULT_SELECTORS,PAIR,'AUD')
+        self.assertEqual(data['card_count'],1)
+        self.assertNotIn('Private account header',json.dumps(data));self.assertEqual(data['cards'][0]['buttons'],['Select outbound'])
+        self.assertEqual(app.state()['runs'],[])
     async def test_verification_preserves_previous_results(self):
         await self.page.set_content('<article>'+TEXT.replace('\n','<br>')+'</article>')
         payload,_=await agent.collect(self.page,PAIR,'AUD',agent.DEFAULT_SELECTORS);app.ingest(payload)
