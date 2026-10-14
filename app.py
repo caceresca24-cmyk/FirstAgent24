@@ -165,7 +165,20 @@ def scheduler_tick(local=None):
         results.append(dict(id=jid,status=status))
     return results
 
+def allowed_origins(port):
+    origins={f'http://127.0.0.1:{port}',f'http://localhost:{port}'}
+    # Trust deployment configuration, never incoming forwarded headers.
+    name=os.environ.get('CODESPACE_NAME','')
+    domain=os.environ.get('GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN','')
+    if os.environ.get('CODESPACES')=='true' and name and domain:
+        if not all(c.isalnum() or c in '-.' for c in name+domain):
+            raise ValueError('Invalid Codespaces hostname configuration.')
+        origins.add(f'https://{name}-{port}.{domain}')
+    return origins
+
 def serve(port):
+    origins=allowed_origins(port)
+    hosts={urlparse(origin).netloc for origin in origins}
     token=os.environ.get('FLIGHT_AGENT_TOKEN') or secrets.token_urlsafe(32); csrf=secrets.token_urlsafe(32)
     class Handler(BaseHTTPRequestHandler):
         def log_message(self,*args): pass
@@ -175,7 +188,7 @@ def serve(port):
             self.send_header('X-Content-Type-Options','nosniff')
             self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers(); self.wfile.write(body)
-        def trusted(self): return self.headers.get('Host') in (f'127.0.0.1:{port}',f'localhost:{port}')
+        def trusted(self): return self.headers.get('Host') in hosts
         def do_GET(self):
             if not self.trusted(): return self.response(403,dict(error='Invalid host'))
             path=urlparse(self.path).path
@@ -189,7 +202,7 @@ def serve(port):
         def do_POST(self):
             if not self.trusted(): return self.response(403,dict(error='Invalid host'))
             agent=hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+token)
-            browser=self.headers.get('Origin') in (f'http://127.0.0.1:{port}',f'http://localhost:{port}') and hmac.compare_digest(self.headers.get('X-CSRF-Token',''),csrf)
+            browser=self.headers.get('Origin') in origins and hmac.compare_digest(self.headers.get('X-CSRF-Token',''),csrf)
             if not agent and not browser: return self.response(403,dict(error='Authorised agent or same-origin session required.'))
             try:
                 length=int(self.headers.get('Content-Length','0'))

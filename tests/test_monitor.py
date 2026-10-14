@@ -72,7 +72,8 @@ class HttpSecurity(unittest.TestCase):
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0)); cls.port=sock.getsockname()[1]
         cls.url=f'http://127.0.0.1:{cls.port}'
-        env=dict(os.environ,FLIGHT_DB=str(Path(cls.tmp.name)/'http.sqlite'),FLIGHT_AGENT_TOKEN='test-only-token')
+        cls.forwarded=f'test-codespace-{cls.port}.app.github.dev'
+        env=dict(os.environ,FLIGHT_DB=str(Path(cls.tmp.name)/'http.sqlite'),FLIGHT_AGENT_TOKEN='test-only-token',CODESPACES='true',CODESPACE_NAME='test-codespace',GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN='app.github.dev')
         cls.proc=subprocess.Popen([sys.executable,str(app.ROOT/'app.py'),'serve','--port',str(cls.port)],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         for _ in range(50):
             try:
@@ -97,5 +98,12 @@ class HttpSecurity(unittest.TestCase):
         req=urllib.request.Request(self.url+'/api/state',headers={'Host':'attacker.example'})
         with self.assertRaises(urllib.error.HTTPError) as e: urllib.request.urlopen(req)
         self.assertEqual(e.exception.code,403)
+
+    def test_private_codespaces_forwarded_host_and_origin(self):
+        req=urllib.request.Request(self.url+'/api/session',headers={'Host':self.forwarded})
+        with urllib.request.urlopen(req) as r: csrf=json.load(r)['csrf']
+        self.assertIn('text',self.post('/api/report',{}, {'Host':self.forwarded,'Origin':'https://'+self.forwarded,'X-CSRF-Token':csrf}))
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/report',{}, {'Host':self.forwarded,'Origin':'https://another-codespace.app.github.dev','X-CSRF-Token':csrf})
 
 if __name__=='__main__': unittest.main()

@@ -12,6 +12,21 @@ python app.py serve
 
 Open **http://127.0.0.1:8765**. The optional sample observation contains the live Trip.com search checked on 14 October 2026: five offers for 8 November, including four qualifying nonstop flights with cabin baggage. Batik Air OD158 was USD 187. This is a point-in-time observation, not a continuously refreshed feed. It is NOT a complete October–December calendar search.
 
+### In GitHub Codespaces
+
+Run these commands in your Codespaces terminal:
+
+```sh
+git fetch origin
+git checkout flight-monitor
+git pull --ff-only
+python app.py serve
+```
+
+In **Ports**, forward port **8765**, keep its visibility **Private**, and choose **Open in Browser**. Leave the terminal running. The app automatically accepts this Codespace's forwarded HTTPS origin using GitHub's environment variables. It does not accept arbitrary forwarded hosts. Do not switch the port to Public: the dashboard relies on Codespaces' private access gate.
+
+The dashboard starts empty. To view the saved example search, run `python app.py import examples/initial-trip-result.json` in a second terminal, then click **Refresh dashboard**.
+
 If starting with a clean database, import the provided observation once:
 
 ```sh
@@ -91,7 +106,7 @@ No external delivery is implied by saving an alert or report. Add and test an au
 python -m unittest discover -s tests -v
 ```
 
-The tests use temporary databases and mocked adapters; no live booking or notification is performed. A live Trip.com read and actual import were verified in the development session. Authenticated HTTP writes, same-origin browser writes and hostile Host/origin rejection passed local tests. Browser visual verification and unattended provider execution remain unverified. All 15 tests passed.
+The tests use temporary databases and mocked adapters; no live booking or notification is performed. A live Trip.com read and actual import were verified in the development session. Authenticated HTTP writes, same-origin browser writes and hostile Host/origin rejection passed local tests. Browser visual verification and unattended provider execution remain unverified. All 16 tests passed.
 
 ## Files and data
 
