@@ -1,3 +1,5 @@
 __pycache__/
 data/
 .env
+browser_data/
+playwright-report/
