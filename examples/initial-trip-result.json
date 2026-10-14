@@ -1,0 +1,358 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Found 5 flights:\n\n1. Brisbane → Bali\n   Depart: 2026-11-08 07:15:00 | Arrive: 2026-11-08 11:30:00\n   Price: USD 187\n\n2. Brisbane → Bali\n   Depart: 2026-11-08 16:10:00 | Arrive: 2026-11-08 20:15:00\n   Price: USD 237\n\n3. Brisbane → Bali\n   Depart: 2026-11-08 07:20:00 | Arrive: 2026-11-08 11:25:00\n   Price: USD 258\n\n4. Brisbane → Bali\n   Depart: 2026-11-08 09:40:00 | Arrive: 2026-11-08 13:55:00\n   Price: USD 317\n\n5. Brisbane → Bali\n   Depart: 2026-11-08 23:05:00 | Arrive: 2026-11-09 09:30:00\n   Price: USD 736"
+    }
+  ],
+  "structuredContent": {
+    "flight": {
+      "success": true,
+      "message": "Found 5 flight options",
+      "flights": [
+        {
+          "price": 187,
+          "currency": "USD",
+          "currencyDesc": "USD",
+          "deeplinkUrls": {
+            "onlineUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&topflightno=OD158&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+            "h5MiddleUrl": "https://us.trip.com/m/flights/xdetail/?triptype=0&dcitycode=BNE&acitycode=DPS&dairportcode=BNE&aairportcode=DPS&ddate=2026-11-08&classtype=0&classgroupsearch=true&adult=1&child=0&infant=0&locale=en-US&scene=chatgpt&currency=USD&segment_list=%5B%7B%22flight_list%22%3A%5B%7B%22airline%22%3A%22OD%22%2C%22flight_no%22%3A%22OD158%22%2C%22d_airport%22%3A%22BNE%22%2C%22a_airport%22%3A%22DPS%22%2C%22d_date%22%3A%222026-11-08%22%2C%22class%22%3A%22Y%22%7D%5D%7D%5D&wkp=1&allianceid=8006699&sid=302809151"
+          },
+          "journalList": [
+            {
+              "journal": {
+                "departTime": "2026-11-08 07:15:00",
+                "arriveTime": "2026-11-08 11:30:00",
+                "departCity": "BNE",
+                "departCityName": "Brisbane",
+                "arriveCity": "DPS",
+                "arriveCityName": "Bali",
+                "duration": 375,
+                "isTransfer": false,
+                "transferCities": [],
+                "cabinClass": "Y",
+                "baggageAllowance": {
+                  "hasCheckedBaggage": false,
+                  "hasCarryOn": true
+                },
+                "cabinClassText": "Economy",
+                "formatDepartTime": "Nov 8",
+                "formatArriveTime": "Nov 8",
+                "formatDuration": "6h 15m"
+              },
+              "segments": [
+                {
+                  "segmentNo": 1,
+                  "airlineCode": "OD",
+                  "airlineName": "Batik Air Malaysia",
+                  "flightNo": "OD158",
+                  "departAirport": "BNE",
+                  "departAirportName": "Brisbane Airport",
+                  "departTime": "2026-11-08 07:15:00",
+                  "arriveAirport": "DPS",
+                  "arriveAirportName": "Ngurah Rai International Airport",
+                  "arriveTime": "2026-11-08 11:30:00",
+                  "isStop": false,
+                  "craftType": "Boeing 737 MAX 8",
+                  "departTerminal": "I",
+                  "arriveTerminal": "I"
+                }
+              ],
+              "labels": [
+                "cheapest",
+                "cheapestDirect"
+              ]
+            }
+          ],
+          "routeTitle": "Brisbane to Bali",
+          "formattedPrice": "US$ 187"
+        },
+        {
+          "price": 237,
+          "currency": "USD",
+          "currencyDesc": "USD",
+          "deeplinkUrls": {
+            "onlineUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&topflightno=JQ059&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+            "h5MiddleUrl": "https://us.trip.com/m/flights/xdetail/?triptype=0&dcitycode=BNE&acitycode=DPS&dairportcode=BNE&aairportcode=DPS&ddate=2026-11-08&classtype=0&classgroupsearch=true&adult=1&child=0&infant=0&locale=en-US&scene=chatgpt&currency=USD&segment_list=%5B%7B%22flight_list%22%3A%5B%7B%22airline%22%3A%22JQ%22%2C%22flight_no%22%3A%22JQ059%22%2C%22d_airport%22%3A%22BNE%22%2C%22a_airport%22%3A%22DPS%22%2C%22d_date%22%3A%222026-11-08%22%2C%22class%22%3A%22Y%22%7D%5D%7D%5D&wkp=1&allianceid=8006699&sid=302809151"
+          },
+          "journalList": [
+            {
+              "journal": {
+                "departTime": "2026-11-08 16:10:00",
+                "arriveTime": "2026-11-08 20:15:00",
+                "departCity": "BNE",
+                "departCityName": "Brisbane",
+                "arriveCity": "DPS",
+                "arriveCityName": "Bali",
+                "duration": 365,
+                "isTransfer": false,
+                "transferCities": [],
+                "cabinClass": "Y",
+                "baggageAllowance": {
+                  "hasCheckedBaggage": false,
+                  "hasCarryOn": true
+                },
+                "cabinClassText": "Economy",
+                "formatDepartTime": "Nov 8",
+                "formatArriveTime": "Nov 8",
+                "formatDuration": "6h 5m"
+              },
+              "segments": [
+                {
+                  "segmentNo": 1,
+                  "airlineCode": "JQ",
+                  "airlineName": "Jetstar Airways",
+                  "flightNo": "JQ059",
+                  "departAirport": "BNE",
+                  "departAirportName": "Brisbane Airport",
+                  "departTime": "2026-11-08 16:10:00",
+                  "arriveAirport": "DPS",
+                  "arriveAirportName": "Ngurah Rai International Airport",
+                  "arriveTime": "2026-11-08 20:15:00",
+                  "isStop": false,
+                  "craftType": "Airbus A321neo",
+                  "departTerminal": "I",
+                  "arriveTerminal": "I"
+                }
+              ],
+              "labels": [
+                "shortestDuration"
+              ]
+            }
+          ],
+          "routeTitle": "Brisbane to Bali",
+          "formattedPrice": "US$ 237"
+        },
+        {
+          "price": 258,
+          "currency": "USD",
+          "currencyDesc": "USD",
+          "deeplinkUrls": {
+            "onlineUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&topflightno=JQ057&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+            "h5MiddleUrl": "https://us.trip.com/m/flights/xdetail/?triptype=0&dcitycode=BNE&acitycode=DPS&dairportcode=BNE&aairportcode=DPS&ddate=2026-11-08&classtype=0&classgroupsearch=true&adult=1&child=0&infant=0&locale=en-US&scene=chatgpt&currency=USD&segment_list=%5B%7B%22flight_list%22%3A%5B%7B%22airline%22%3A%22JQ%22%2C%22flight_no%22%3A%22JQ057%22%2C%22d_airport%22%3A%22BNE%22%2C%22a_airport%22%3A%22DPS%22%2C%22d_date%22%3A%222026-11-08%22%2C%22class%22%3A%22Y%22%7D%5D%7D%5D&wkp=1&allianceid=8006699&sid=302809151"
+          },
+          "journalList": [
+            {
+              "journal": {
+                "departTime": "2026-11-08 07:20:00",
+                "arriveTime": "2026-11-08 11:25:00",
+                "departCity": "BNE",
+                "departCityName": "Brisbane",
+                "arriveCity": "DPS",
+                "arriveCityName": "Bali",
+                "duration": 365,
+                "isTransfer": false,
+                "transferCities": [],
+                "cabinClass": "Y",
+                "baggageAllowance": {
+                  "hasCheckedBaggage": false,
+                  "hasCarryOn": true
+                },
+                "cabinClassText": "Economy",
+                "formatDepartTime": "Nov 8",
+                "formatArriveTime": "Nov 8",
+                "formatDuration": "6h 5m"
+              },
+              "segments": [
+                {
+                  "segmentNo": 1,
+                  "airlineCode": "JQ",
+                  "airlineName": "Jetstar Airways",
+                  "flightNo": "JQ057",
+                  "departAirport": "BNE",
+                  "departAirportName": "Brisbane Airport",
+                  "departTime": "2026-11-08 07:20:00",
+                  "arriveAirport": "DPS",
+                  "arriveAirportName": "Ngurah Rai International Airport",
+                  "arriveTime": "2026-11-08 11:25:00",
+                  "isStop": false,
+                  "craftType": "Airbus A321neo",
+                  "departTerminal": "I",
+                  "arriveTerminal": "I"
+                }
+              ],
+              "labels": [
+                "shortestDuration"
+              ]
+            }
+          ],
+          "routeTitle": "Brisbane to Bali",
+          "formattedPrice": "US$ 258"
+        },
+        {
+          "price": 317,
+          "currency": "USD",
+          "currencyDesc": "USD",
+          "deeplinkUrls": {
+            "onlineUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&topflightno=VA045&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+            "h5MiddleUrl": "https://us.trip.com/m/flights/xdetail/?triptype=0&dcitycode=BNE&acitycode=DPS&dairportcode=BNE&aairportcode=DPS&ddate=2026-11-08&classtype=0&classgroupsearch=true&adult=1&child=0&infant=0&locale=en-US&scene=chatgpt&currency=USD&segment_list=%5B%7B%22flight_list%22%3A%5B%7B%22airline%22%3A%22VA%22%2C%22flight_no%22%3A%22VA045%22%2C%22d_airport%22%3A%22BNE%22%2C%22a_airport%22%3A%22DPS%22%2C%22d_date%22%3A%222026-11-08%22%2C%22class%22%3A%22Y%22%7D%5D%7D%5D&wkp=1&allianceid=8006699&sid=302809151"
+          },
+          "journalList": [
+            {
+              "journal": {
+                "departTime": "2026-11-08 09:40:00",
+                "arriveTime": "2026-11-08 13:55:00",
+                "departCity": "BNE",
+                "departCityName": "Brisbane",
+                "arriveCity": "DPS",
+                "arriveCityName": "Bali",
+                "duration": 375,
+                "isTransfer": false,
+                "transferCities": [],
+                "cabinClass": "Y",
+                "baggageAllowance": {
+                  "hasCheckedBaggage": false,
+                  "hasCarryOn": true
+                },
+                "cabinClassText": "Economy",
+                "formatDepartTime": "Nov 8",
+                "formatArriveTime": "Nov 8",
+                "formatDuration": "6h 15m"
+              },
+              "segments": [
+                {
+                  "segmentNo": 1,
+                  "airlineCode": "VA",
+                  "airlineName": "Virgin Australia",
+                  "flightNo": "VA045",
+                  "departAirport": "BNE",
+                  "departAirportName": "Brisbane Airport",
+                  "departTime": "2026-11-08 09:40:00",
+                  "arriveAirport": "DPS",
+                  "arriveAirportName": "Ngurah Rai International Airport",
+                  "arriveTime": "2026-11-08 13:55:00",
+                  "isStop": false,
+                  "craftType": "Boeing 737 MAX 8",
+                  "departTerminal": "I",
+                  "arriveTerminal": "I"
+                }
+              ]
+            }
+          ],
+          "routeTitle": "Brisbane to Bali",
+          "formattedPrice": "US$ 317"
+        },
+        {
+          "price": 736,
+          "currency": "USD",
+          "currencyDesc": "USD",
+          "deeplinkUrls": {
+            "onlineUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&topflightno=SQ246,SQ934&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+            "h5MiddleUrl": "https://us.trip.com/m/flights/xdetail/?triptype=0&dcitycode=BNE&acitycode=DPS&dairportcode=BNE&aairportcode=DPS&ddate=2026-11-08&classtype=0&classgroupsearch=true&adult=1&child=0&infant=0&locale=en-US&scene=chatgpt&currency=USD&segment_list=%5B%7B%22flight_list%22%3A%5B%7B%22airline%22%3A%22SQ%22%2C%22flight_no%22%3A%22SQ246%22%2C%22d_airport%22%3A%22BNE%22%2C%22a_airport%22%3A%22SIN%22%2C%22d_date%22%3A%222026-11-08%22%2C%22class%22%3A%22Y%22%7D%2C%7B%22airline%22%3A%22SQ%22%2C%22flight_no%22%3A%22SQ934%22%2C%22d_airport%22%3A%22SIN%22%2C%22a_airport%22%3A%22DPS%22%2C%22d_date%22%3A%222026-11-09%22%2C%22class%22%3A%22Y%22%7D%5D%7D%5D&wkp=1&allianceid=8006699&sid=302809151"
+          },
+          "journalList": [
+            {
+              "journal": {
+                "departTime": "2026-11-08 23:05:00",
+                "arriveTime": "2026-11-09 09:30:00",
+                "departCity": "BNE",
+                "departCityName": "Brisbane",
+                "arriveCity": "DPS",
+                "arriveCityName": "Bali",
+                "duration": 745,
+                "isTransfer": true,
+                "transferCities": [
+                  "Singapore"
+                ],
+                "cabinClass": "Y",
+                "dayOffset": "+1",
+                "baggageAllowance": {
+                  "hasCheckedBaggage": true,
+                  "hasCarryOn": true
+                },
+                "cabinClassText": "Economy",
+                "stopInfo": "1 stop",
+                "formatDepartTime": "Nov 8",
+                "formatArriveTime": "Nov 9",
+                "formatDuration": "12h 25m"
+              },
+              "segments": [
+                {
+                  "segmentNo": 1,
+                  "airlineCode": "SQ",
+                  "airlineName": "Singapore Airlines",
+                  "flightNo": "SQ246",
+                  "departAirport": "BNE",
+                  "departAirportName": "Brisbane Airport",
+                  "departTime": "2026-11-08 23:05:00",
+                  "arriveAirport": "SIN",
+                  "arriveAirportName": "Singapore Changi Airport",
+                  "arriveTime": "2026-11-09 05:05:00",
+                  "isStop": false,
+                  "craftType": "Airbus A350-900",
+                  "departTerminal": "I",
+                  "arriveTerminal": ""
+                },
+                {
+                  "segmentNo": 2,
+                  "airlineCode": "SQ",
+                  "airlineName": "Singapore Airlines",
+                  "flightNo": "SQ934",
+                  "departAirport": "SIN",
+                  "departAirportName": "Singapore Changi Airport",
+                  "departTime": "2026-11-09 06:45:00",
+                  "arriveAirport": "DPS",
+                  "arriveAirportName": "Ngurah Rai International Airport",
+                  "arriveTime": "2026-11-09 09:30:00",
+                  "isStop": false,
+                  "craftType": "Boeing 737 MAX 8",
+                  "departTerminal": "T2",
+                  "arriveTerminal": "I"
+                }
+              ]
+            }
+          ],
+          "routeTitle": "Brisbane to Bali",
+          "formattedPrice": "US$ 736"
+        }
+      ],
+      "totalCount": 5,
+      "tripType": "oneWay",
+      "transactionId": "d24e9d17-07b2-46e4-b776-9f08ccf8805e",
+      "rawQuery": "Brisbane to Bali Denpasar, 8 November 2026, one adult one-way economy with cabin baggage included",
+      "searchSummary": "Brisbane to Bali · Nov 8 · One way",
+      "deeplinkUrlParams": {
+        "onlineListUrl": "https://us.trip.com/flights/showfarefirst?dcity=BNE&acity=DPS&ddate=2026-11-08&class=Y&triptype=OW&quantity=1&childqty=0&babyqty=0&sort=price&locale=en-US&curr=USD&from=chatgpt&allianceid=8006699&sid=302809151",
+        "h5ListUrl": "https://us.trip.com/m/flights/flightfirst?dcitycode=BNE&acitycode=DPS&triptype=0&ddate=2026-11-08&classtype=0&adult=1&child=0&infant=0&locale=en-US&currency=USD&scene=chatgpt&allianceid=8006699&sid=302809151"
+      },
+      "queryOriginCityCode": "BNE",
+      "queryDestCityCode": "DPS",
+      "queryDepartDate": "2026-11-08"
+    },
+    "locale": "en-AU",
+    "site": "us.trip.com",
+    "i18n": {
+      "noFlightTip": "Sorry, I couldn't find any information based on your request. Please rephrase your question or adjust your search details.",
+      "systemError": "Something went wrong. Please try again later.",
+      "cabinClass": "Cabin class",
+      "price": "Price",
+      "depart": "Depart:",
+      "return": "Return:",
+      "searchFlights": "View on Trip.com",
+      "searchOnTrip": "Search on Trip.com",
+      "flightResultsFound": "5 flights found",
+      "lowPriceFlightResultsFound": "%1$s low-fare flight found",
+      "viewAllOnTrip": "View all on Trip.com",
+      "direct": "Direct",
+      "oneWay": "One way",
+      "roundTrip": "Round trip",
+      "routeTo": "%1$s to %2$s",
+      "perTraveler": "Per traveler",
+      "adultCount": "%1$s adult",
+      "searchingLowPriceFlights": "Searching for low priced flights",
+      "emptyResultTitle": "No flight results found",
+      "emptyResultSubtitle": "Continue your search on Trip.com",
+      "yourSearch": "Your search",
+      "economy": "Economy",
+      "premium": "Premium",
+      "business": "Business",
+      "first": "First",
+      "stopInfo": "%1$s stop",
+      "childCount": "%1$s child",
+      "infantCount": "%1$s infant"
+    },
+    "currency": "USD"
+  },
+  "isError": false,
+  "observed_at": "2026-10-14T07:06:59.867Z"
+}
