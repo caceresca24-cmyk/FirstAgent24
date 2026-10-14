@@ -12,9 +12,9 @@ A Brisbane ↔ Bali return-flight dashboard with SQLite history, price-drop aler
 
 ## Current readiness
 
-**30 tests pass**, including six real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
+**35 tests pass**, including nine real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
 
-**Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. The live site selectors, date presentation and flight-selection sequence could not be inspected. The runner stops when it cannot recognise complete return-itinerary cards. It must be adapted and checked against a reachable live page before it can be called a working Trip.com feed. No automatic searches or notifications have been enabled.
+**Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. An uploaded live card diagnostic now confirms separate outbound selection cards. The first outbound-to-return transition is implemented and tested against that captured layout; return choices and final fare details still need live inspection. The runner stops when it cannot recognise complete return-itinerary cards. It must be adapted and checked against a reachable live page before it can be called a working Trip.com feed. No automatic searches or notifications have been enabled.
 
 The [browser-agent guide](BROWSER_AGENT.md) describes the exact parser requirements and verification limits.
 

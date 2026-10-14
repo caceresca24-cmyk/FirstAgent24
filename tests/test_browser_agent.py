@@ -111,3 +111,24 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
         checkpoint=[]
         with self.assertRaises(agent.ExtractionError):await agent.run_scan(self.page,[PAIR],'AUD',agent.DEFAULT_SELECTORS,1,save_checkpoint=checkpoint.append)
         self.assertEqual(checkpoint,[]);self.assertEqual(app.browser_status()['next_index'],0);self.assertEqual(app.state()['runs'],[])
+    async def test_observed_outbound_layout_selects_virgin_and_stops_for_return_verification(self):
+        import html
+        texts=json.loads((app.ROOT/'tests'/'fixtures'/'trip_outbound_cards.json').read_text(encoding='utf-8'))
+        markup=''.join('<article>'+html.escape(t).replace('\n','<br>')+'<button>Select</button></article>' for t in texts)
+        returned=texts[1].replace('BNE','TMP').replace('DPS','BNE').replace('TMP','DPS')
+        await self.page.set_content(markup)
+        # A selected Jetstar would fail: it explicitly includes checked baggage.
+        await self.page.locator('article').nth(1).locator('button').evaluate('(b,html)=>b.onclick=()=>{document.body.innerHTML=html}', '<article>'+html.escape(returned).replace('\n','<br>')+'</article>')
+        with self.assertRaisesRegex(agent.ExtractionError,'Outbound selected'):
+            await agent.collect(self.page,PAIR,'USD',agent.DEFAULT_SELECTORS)
+        diagnostic=json.loads((app.DB.parent/'flight-card-diagnostics.json').read_text(encoding='utf-8'))
+        self.assertEqual(diagnostic['selected_outbound']['index'],1)
+        self.assertIsNone(diagnostic['selected_outbound']['leg']['checked'])
+        self.assertEqual(diagnostic['cards'][0]['leg']['origin'],'DPS')
+        self.assertEqual(app.state()['runs'],[])
+    async def test_known_card_labels_do_not_infer_baggage(self):
+        texts=json.loads((app.ROOT/'tests'/'fixtures'/'trip_outbound_cards.json').read_text(encoding='utf-8'))
+        legs=[agent.parse_selection_card(t) for t in texts]
+        self.assertTrue(legs[0]['checked']);self.assertIsNone(legs[1]['checked']);self.assertIsNone(legs[1]['carry_on'])
+        self.assertEqual(sum(v['nonstop'] for v in legs),2)
+        self.assertFalse(legs[3]['nonstop']);self.assertTrue(legs[3]['carry_on'])

@@ -71,3 +71,9 @@ python browser_agent.py diagnose
 ```
 
 Wait for results in the opened browser, leave that screen visible and press Enter in the terminal. The command writes `data/flight-card-diagnostics.json`, containing up to 20 result cards' visible text, element tag names and button labels. It does not collect cookies, passwords, browser storage, full-page HTML or the account header, and does not import any prices. Review the file before sharing and remove any personal information accidentally present in a card. A screenshot of the flight-results screen can additionally show whether return flights require a second selection step.
+
+## Separate outbound and return screens (observed Windows layout)
+
+The uploaded live diagnostic shows eight single-leg outbound choices with prices labelled Round-trip. Two are nonstop; one explicitly includes checked baggage. Generic Included labels do not identify a baggage type. The runner now recognises this layout, skips connecting flights and explicitly checked-inclusive fares, and clicks only the scoped outbound Select control on a candidate for further inspection. Unknown baggage remains unknown.
+
+The return layout and final fare selection have not yet been captured. The runner saves the return-card diagnostic and stops before importing prices; it cannot yet claim a confirmed live return itinerary. Run `python browser_agent.py diagnose-return` to open results, select the first suitable outbound candidate for inspection, and capture the return choices. Press Enter once the initial results are visible and again when the return results are visible. Review `data/flight-card-diagnostics.json` before sharing. This does not book a ticket.
