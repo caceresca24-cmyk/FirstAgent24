@@ -2,7 +2,7 @@
 Live Trip.com DOM selectors require verification on a reachable page.
 """
 import argparse, asyncio, hashlib, json, os, re, sys, uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -23,8 +23,12 @@ def parse_selection_card(text):
     quotes=re.findall(r'(US\$|AU\$|AUD\s*|USD\s*)\s*([0-9][0-9,]*(?:\.\d{1,2})?)',text)
     quoted_currency={'US$':'USD','AU$':'AUD','AUD':'AUD','USD':'USD'}
     amount=float(quotes[0][1].replace(',','')) if len(quotes)==1 else None
+    duration_match=re.search(r'\b(\d+)h\s*(\d+)m\b',text)
+    offset_match=re.search(r'^\s*\+(\d+)\s*$',text,re.M)
+    airline=next((line for line in lines if re.search(r'Airways|Airlines|Virgin Australia|Batik Air|TransNusa',line) and not line.startswith('Operated')), 'Airline not shown')
     return dict(origin=airports[0],destination=airports[1],depart_time=times[0],arrive_time=times[1],
-        nonstop=bool(re.search(r'\bNonstop\b',text,re.I)),carry_on=carry,checked=checked,
+        nonstop=bool(re.search(r'\bNonstop\b',text,re.I)),carry_on=carry,checked=checked,airline=airline,
+        duration=int(duration_match[1])*60+int(duration_match[2]) if duration_match else None,arrival_offset=int(offset_match[1]) if offset_match else 0,
         displayed_total=amount,currency=quoted_currency.get(quotes[0][0].strip()) if len(quotes)==1 else None,
         note='Single-leg choice only; displayed round-trip price is not a confirmed complete itinerary.')
 
@@ -119,6 +123,107 @@ def parse_card(text,pair,currency,url):
         journals.append(dict(journal=dict(departCity=origin,arriveCity=dest,departTime=dep.isoformat(' '),arriveTime=arr.isoformat(' '),duration=duration,isTransfer=False,cabinClass='Y',baggageAllowance=dict(hasCarryOn=flag(carry,i),hasCheckedBaggage=flag(checked,i))),segments=[dict(flightNo=flights[i],airlineName=flights[i][:2],isStop=False)]))
     return dict(price=price,currency=currency,journalList=journals,deeplinkUrls=dict(onlineUrl=url))
 
+def parse_fare_panel(text,selected_outbound,selected_return,pair,currency):
+    """Parse observed fare packages; skip optional paid upgrades, preserve unknown baggage."""
+    if re.search(r'\+\s*(?:US\$|AU\$|USD|AUD)',text): return None
+    lines=[line.strip() for line in text.splitlines() if line.strip()]
+    if 'Round-trip' not in lines or not any('Economy class' in v for v in lines): raise ExtractionError('Fare panel is not explicitly return economy.')
+    at=lines.index('Round-trip')
+    if at==0: raise ExtractionError('Fare total missing.')
+    quote=re.fullmatch(r'(US\$|AU\$|USD\s*|AUD\s*)\s*([\d,]+(?:\.\d{1,2})?)',lines[at-1])
+    if not quote: raise ExtractionError('Unrecognised return fare total.')
+    code={'US$':'USD','AU$':'AUD','USD':'USD','AUD':'AUD'}[quote[1].strip()];price=float(quote[2].replace(',',''))
+    if code!=currency or selected_return['leg']['currency']!=currency or price!=selected_return['leg']['displayed_total']:
+        raise ExtractionError('Fare panel total/currency does not match the selected return; possible stale panel.')
+    def allowances(name):
+        line=next((v for v in lines if v.lower().startswith(name.lower()+':')),None)
+        if not line: return [None,None]
+        pieces=dict((label.lower(),value.strip(' ,:')) for value,label in re.findall(r'([^()]*)\((departure|return)\)',line.split(':',1)[1],re.I))
+        def flag(value):
+            if value is None: return None
+            if re.search(r'not included|excluded|no allowance|\b0\s*(?:kg|pieces?)\b',value,re.I): return False
+            if re.search(r'\b[1-9]\d*(?:\.\d+)?\s*(?:kg|pieces?|×)|^included$',value,re.I): return True
+            return None
+        return [flag(pieces.get(k)) for k in ('departure','return')]
+    carry=allowances('Carry-on baggage');checked=allowances('Checked baggage');journals=[]
+    for i,selection in enumerate((selected_outbound,selected_return)):
+        leg=parse_selection_card(selection['text'])
+        expected=('BNE','DPS') if i==0 else ('DPS','BNE')
+        if not leg or not leg['nonstop'] or (leg['origin'],leg['destination'])!=expected: raise ExtractionError('Incomplete or connecting selected itinerary.')
+        depart_date=date.fromisoformat(pair['depart'] if i==0 else pair['return_date'])
+        dep=datetime.fromisoformat(str(depart_date)+'T'+leg['depart_time'])
+        arr=datetime.fromisoformat(str(depart_date+timedelta(days=leg['arrival_offset']))+'T'+leg['arrive_time'])
+        tz1,tz2=('Australia/Brisbane','Asia/Makassar') if i==0 else ('Asia/Makassar','Australia/Brisbane')
+        duration=int((arr.replace(tzinfo=ZoneInfo(tz2)).timestamp()-dep.replace(tzinfo=ZoneInfo(tz1)).timestamp())/60)
+        if duration!=leg['duration'] or not 240<=duration<=600: raise ExtractionError('Selected dates/times do not match displayed nonstop duration.')
+        journals.append(dict(journal=dict(departCity=expected[0],arriveCity=expected[1],departTime=dep.isoformat(' '),arriveTime=arr.isoformat(' '),duration=duration,isTransfer=False,cabinClass='Y',baggageAllowance=dict(hasCarryOn=carry[i],hasCheckedBaggage=checked[i])),segments=[dict(flightNo=None,airlineName=leg['airline'],isStop=False)]))
+    return dict(price=price,currency=currency,journalList=journals,deeplinkUrls=dict(onlineUrl=search_url(pair,currency)))
+
+async def verify_search_dates(page,pair):
+    """Require visible search-date labels; do not infer dates solely from requested URL."""
+    text=await page.locator('body').inner_text()
+    for value in (pair['depart'],pair['return_date']):
+        d=date.fromisoformat(value); month=d.strftime('%b');day=str(d.day)
+        pattern=rf'{re.escape(value)}|\b{month}\s*,?\s*0?{day}\b|\b0?{day}\s+{month}\b'
+        if not re.search(pattern,text,re.I): raise ExtractionError('Cannot verify displayed search dates. Leave date labels visible and capture a screenshot; no fares imported.')
+
+async def selected_candidates(page,selectors,origin,destination):
+    result=[];cards=page.locator(selectors['cards'])
+    for i in range(await cards.count()):
+        text=await cards.nth(i).inner_text();leg=parse_selection_card(text)
+        if leg and (leg['origin'],leg['destination'])==(origin,destination) and leg['nonstop'] and leg['checked'] is not True and leg['carry_on'] is not False:
+            result.append(dict(text=text,leg=leg,index=i))
+    return result
+
+async def click_matching_choice(page,selectors,choice):
+    cards=page.locator(selectors['cards']);wanted=choice['leg']
+    for i in range(await cards.count()):
+        card=cards.nth(i);text=await card.inner_text();leg=parse_selection_card(text)
+        if not leg or any(leg[k]!=wanted[k] for k in ('origin','destination','depart_time','arrive_time','airline')): continue
+        if not leg['nonstop'] or leg['checked'] is True or leg['carry_on'] is False: raise ExtractionError('Flight eligibility changed since selection.')
+        button=card.get_by_role('button',name='Select',exact=True)
+        if await button.count()!=1: button=card.get_by_text('Select',exact=True)
+        if await button.count()!=1: raise ExtractionError('Ambiguous flight Select control.')
+        await button.click();return dict(text=text,leg=leg,index=i)
+    raise ExtractionError('Selected flight disappeared or changed. No substitute was guessed.')
+
+async def collect_separate_trip(page,pair,currency,selectors):
+    await verify_search_dates(page,pair)
+    outbound=await selected_candidates(page,selectors,'BNE','DPS');offers=[];inspected=0
+    async def reset():
+        await asyncio.sleep(10)
+        response=await page.goto(search_url(pair,currency),wait_until='domcontentloaded',timeout=45000)
+        if response and response.status>=400: raise ExtractionError(f'Trip.com returned HTTP {response.status}.')
+        await page.wait_for_selector(selectors['cards'],timeout=30000)
+        await verify_search_dates(page,pair)
+    for oi,original in enumerate(outbound):
+        if oi: await reset()
+        out=await click_matching_choice(page,selectors,original);await wait_return_cards(page,selectors)
+        returns=await selected_candidates(page,selectors,'DPS','BNE')
+        for ri,original_return in enumerate(returns):
+            if ri:
+                await reset();out=await click_matching_choice(page,selectors,original);await wait_return_cards(page,selectors)
+            returned=await click_matching_choice(page,selectors,original_return)
+            matched=None;last_error=None
+            for _ in range(20):
+                panels=await capture_fare_details(page)
+                parsed=[]
+                for panel in panels:
+                    try:
+                        offer=parse_fare_panel(panel['text'],out,returned,pair,currency)
+                        if offer: parsed.append(offer)
+                    except ExtractionError as e: last_error=e
+                if parsed: matched=parsed;break
+                await page.wait_for_timeout(500)
+            if matched is None:
+                diagnostic=await capture_cards(page,selectors,pair,currency)
+                diagnostic.update(step='fare_details',selected_outbound=out,selected_return=returned,fare_panels=await capture_fare_details(page))
+                save_diagnostics(diagnostic)
+                raise ExtractionError(str(last_error or 'Fare panels unavailable; saved diagnostics, no prices imported.'))
+            offers.extend(matched);inspected+=1
+    return dict(run_id=str(uuid.uuid4()),observed_at=app.now(),flight=dict(success=True,tripType='roundTrip',queryDepartDate=pair['depart'],queryReturnDate=pair['return_date'],rawQuery=f'Visible nonstop combinations inspected: {inspected}; not exhaustive inventory',flights=offers)),inspected
+
+
 async def collect(page,pair,currency,selectors):
     text=await page.locator(selectors['text']).inner_text()
     blocked=blockage(text)
@@ -135,12 +240,7 @@ async def collect(page,pair,currency,selectors):
     if errors:
         single_legs=[parse_selection_card(await cards.nth(i).inner_text()) for i in range(count)]
         if any(leg and leg['origin']=='BNE' and leg['destination']=='DPS' for leg in single_legs):
-            selected=await select_outbound(page,selectors)
-            await wait_return_cards(page,selectors)
-            diagnostic=await capture_cards(page,selectors,pair,currency)
-            diagnostic.update(step='return_selection',selected_outbound=selected)
-            save_diagnostics(diagnostic)
-            raise ExtractionError('Outbound selected; Trip.com uses separate return choices. Return layout saved to data/flight-card-diagnostics.json. Final fare/baggage verification is still required; no prices imported.')
+            return await collect_separate_trip(page,pair,currency,selectors)
         raise ExtractionError(f'{len(errors)}/{count} cards unreadable: '+errors[0])
     if not offers: raise ExtractionError('No complete round-trip offers extracted.')
     return dict(run_id=str(uuid.uuid4()),observed_at=app.now(),flight=dict(success=True,tripType='roundTrip',queryDepartDate=pair['depart'],queryReturnDate=pair['return_date'],rawQuery='Browser search BNE ↔ DPS, one adult economy',flights=offers)),count

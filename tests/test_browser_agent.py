@@ -119,9 +119,10 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
         await self.page.set_content(markup)
         # A selected Jetstar would fail: it explicitly includes checked baggage.
         await self.page.locator('article').nth(1).locator('button').evaluate('(b,html)=>b.onclick=()=>{document.body.innerHTML=html}', '<article>'+html.escape(returned).replace('\n','<br>')+'</article>')
-        with self.assertRaisesRegex(agent.ExtractionError,'Outbound selected'):
-            await agent.collect(self.page,PAIR,'USD',agent.DEFAULT_SELECTORS)
-        diagnostic=json.loads((app.DB.parent/'flight-card-diagnostics.json').read_text(encoding='utf-8'))
+        selected=await agent.select_outbound(self.page,agent.DEFAULT_SELECTORS)
+        await agent.wait_return_cards(self.page,agent.DEFAULT_SELECTORS)
+        diagnostic=await agent.capture_cards(self.page,agent.DEFAULT_SELECTORS,PAIR,'USD')
+        diagnostic['selected_outbound']=selected
         self.assertEqual(diagnostic['selected_outbound']['index'],1)
         self.assertIsNone(diagnostic['selected_outbound']['leg']['checked'])
         self.assertEqual(diagnostic['cards'][0]['leg']['origin'],'DPS')
@@ -153,3 +154,55 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
         await self.page.set_content('<header>Private account header</header><div role="dialog">Sign in password reset</div><div role="dialog">Baggage allowance: carry-on 7 kg</div>')
         captured=await agent.capture_fare_details(self.page)
         self.assertEqual(len(captured),1);self.assertNotIn('Private account',json.dumps(captured));self.assertNotIn('password reset',json.dumps(captured))
+    def fare_fixture(self):
+        f=json.loads((app.ROOT/'tests'/'fixtures'/'trip_fare_details.json').read_text(encoding='utf-8'))
+        out=dict(text=f['outbound'],leg=agent.parse_selection_card(f['outbound']))
+        ret=dict(text=f['returned'],leg=agent.parse_selection_card(f['returned']))
+        return f,out,ret
+    async def test_actual_fare_panel_confirms_checked_baggage_and_overnight_return(self):
+        f,out,ret=self.fare_fixture()
+        offer=agent.parse_fare_panel(f['panels'][0],out,ret,f['pair'],'USD')
+        self.assertEqual(offer['price'],1650)
+        self.assertTrue(all(v['journal']['baggageAllowance']['hasCarryOn'] for v in offer['journalList']))
+        self.assertTrue(all(v['journal']['baggageAllowance']['hasCheckedBaggage'] for v in offer['journalList']))
+        self.assertTrue(offer['journalList'][1]['journal']['arriveTime'].startswith('2026-10-23'))
+        self.assertIsNone(offer['journalList'][0]['segments'][0]['flightNo'])
+        app.ingest(dict(flight=dict(success=True,tripType='roundTrip',flights=[offer])))
+        self.assertEqual(app.state()['fares'],[]);self.assertEqual(len(app.state()['excluded']),1)
+    async def test_optional_upgrade_not_misrepresented_as_base_total(self):
+        f,out,ret=self.fare_fixture()
+        self.assertIsNone(agent.parse_fare_panel(f['panels'][1],out,ret,f['pair'],'USD'))
+    async def test_explicit_no_checked_baggage_both_legs_is_required(self):
+        f,out,ret=self.fare_fixture()
+        text=f['panels'][0].replace('1 × 23 kg (departure), 25 kg (return)','Not included (departure), Not included (return)')
+        offer=agent.parse_fare_panel(text,out,ret,f['pair'],'USD')
+        self.assertTrue(all(v['journal']['baggageAllowance']['hasCheckedBaggage'] is False for v in offer['journalList']))
+        with app.connect() as c:
+            s=app.settings(c);s['currency']='USD';c.execute('UPDATE settings SET value=? WHERE id=1',(json.dumps(s),))
+        app.ingest(dict(flight=dict(success=True,tripType='roundTrip',flights=[offer])))
+        self.assertEqual(len(app.state()['fares']),1)
+    async def test_stale_price_panel_and_unverified_dates_rejected(self):
+        f,out,ret=self.fare_fixture()
+        with self.assertRaises(agent.ExtractionError):agent.parse_fare_panel(f['panels'][0].replace('US$1,650','US$1,600'),out,ret,f['pair'],'USD')
+        await self.page.set_content('<header>Oct 15</header>')
+        with self.assertRaises(agent.ExtractionError):await agent.verify_search_dates(self.page,f['pair'])
+    async def test_full_multistep_scan_checks_all_visible_nonstop_returns(self):
+        import html
+        from unittest.mock import AsyncMock
+        f,out,ret=self.fare_fixture()
+        outbound=json.loads((app.ROOT/'tests'/'fixtures'/'trip_outbound_cards.json').read_text(encoding='utf-8'))
+        returned=json.loads((app.ROOT/'tests'/'fixtures'/'trip_return_cards.json').read_text(encoding='utf-8'))
+        head='<header>Oct 15 — Oct 22</header>'
+        ret_markup=head+''.join('<article>'+html.escape(t).replace('\n','<br>')+'<button onclick="showFare('+str(i)+')">Select</button></article>' for i,t in enumerate(returned))
+        panels=[]
+        for t in returned:
+            leg=agent.parse_selection_card(t)
+            panels.append('<section class="fare-item">'+html.escape(f['panels'][0].replace('US$1,650', 'US$'+format(leg['displayed_total'],',.0f'))).replace('\n','<br>')+'</section>')
+        script='<script>const panels='+json.dumps(panels)+';function showFare(i){document.querySelectorAll(".fare-item").forEach(e=>e.remove());document.body.insertAdjacentHTML("beforeend",panels[i]);}function showReturns(){document.body.innerHTML='+json.dumps(ret_markup)+';}</script>'
+        initial=head+''.join('<article>'+html.escape(t).replace('\n','<br>')+'<button onclick="showReturns()">Select</button></article>' for t in outbound)+script
+        await self.page.route('https://www.trip.com/**',lambda route:route.fulfill(status=200,content_type='text/html; charset=utf-8',body=initial))
+        await self.page.goto(agent.search_url(f['pair'],'USD'))
+        with patch.object(agent.asyncio,'sleep',new=AsyncMock()):
+            payload,count=await agent.collect(self.page,f['pair'],'USD',agent.DEFAULT_SELECTORS)
+        self.assertEqual(count,3);self.assertEqual(len(payload['flight']['flights']),3)
+        app.ingest(payload);self.assertEqual(len(app.state()['excluded']),3);self.assertEqual(app.state()['fares'],[])

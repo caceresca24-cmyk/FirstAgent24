@@ -70,7 +70,7 @@ def normalize(p):
             if any(v is not None and type(v) is not bool for v in (carry,checked)): raise ValueError('Invalid baggage allowance.')
             direct=j.get('isTransfer') is False and len(seg)==1 and seg[0].get('isStop') is False
             legs.append(dict(date=dep.date().isoformat(),depart=j['departTime'],arrive=j['arriveTime'],
-                airline=' / '.join(dict.fromkeys(t['airlineName'] for t in seg)),flight=' / '.join(t['flightNo'] for t in seg),
+                airline=' / '.join(dict.fromkeys(t['airlineName'] for t in seg)),flight=' / '.join(t.get('flightNo') or (t['airlineName']+' · flight number not shown') for t in seg),
                 duration=j['duration'],nonstop=direct,carry_on=carry,checked=checked))
         price=x['price']; currency=x.get('currency')
         if type(price) not in (int,float) or not math.isfinite(price) or price<=0: raise ValueError('Invalid price.')
@@ -138,7 +138,7 @@ def state():
             rows=[json.loads(v[0]) for v in c.execute('SELECT value FROM fares WHERE run_id=?',(r['id'],))]
             prices=[f['price'] for f in rows if eligible(f,s)]
             if prices: history.append(dict(observed=r['observed'],price=min(prices),source=r['source']))
-        return dict(settings=s,fares=fares,verification=[f for f in latest(c) if f.get('trip_type')==s['trip_type'] and (f.get('carry_on') is None or f.get('checked') is None)],browser_status=browser_status(),history=history,runs=runs,
+        return dict(settings=s,fares=fares,excluded=[f for f in latest(c) if f.get('trip_type')==s['trip_type'] and (f.get('checked') is True or f.get('carry_on') is False)],verification=[f for f in latest(c) if f.get('trip_type')==s['trip_type'] and (f.get('carry_on') is None or f.get('checked') is None)],browser_status=browser_status(),history=history,runs=runs,
             alerts=[dict(r) for r in c.execute('SELECT * FROM alerts ORDER BY created DESC LIMIT 30')],
             reports=[dict(r) for r in c.execute('SELECT * FROM reports ORDER BY created DESC LIMIT 10')],
             jobs=[dict(r) for r in c.execute('SELECT * FROM jobs ORDER BY updated DESC LIMIT 10')],

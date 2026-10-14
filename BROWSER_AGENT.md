@@ -1,3 +1,9 @@
+# Current update: captured fare panels supported
+
+The uploaded Windows captures now document outbound cards, return cards and fare-package panels. The scanner can inspect visible nonstop combinations, verify search-date labels and matching round-trip totals, parse carry-on/checked allowances per leg, and save confirmed exclusions. A 23 kg departure/25 kg return allowance is included checked baggage and fails your rule. Paid upgrades are skipped. Missing flight numbers remain explicitly unknown. The original direct-complete-card parser is retained for compatible pages.
+
+43 tests pass, including 17 Chromium tests. These replay captured layouts and synthetic interactions; a complete automatic Windows run remains unverified. No recurring browser schedule is enabled. Do not increase batches until `python browser_agent.py scan --headed --max-pairs 1` passes on the actual page. The dashboard must run on the same computer/database as the agent.
+
 # Browser agent: implementation and current limits
 
 The runner opens ordinary Trip.com flight-search pages with Playwright Chromium. It enumerates every departure date through 15 December 2026 and each return 7–10 days later (latest return 25 December). Each search is one adult, economy. It stores a complete round-trip total, verifies both reciprocal flight legs, and applies nonstop, carry-on and no-checked-baggage rules to both legs. Unknown baggage is stored separately for verification, never treated as excluded baggage.

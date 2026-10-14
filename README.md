@@ -12,9 +12,9 @@ A Brisbane ↔ Bali return-flight dashboard with SQLite history, price-drop aler
 
 ## Current readiness
 
-**38 tests pass**, including twelve real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
+**43 tests pass**, including seventeen real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
 
-**Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. An uploaded live card diagnostic now confirms separate outbound selection cards. The first outbound-to-return transition is implemented and tested against that captured layout; return cards have also been captured and their Select step is tested against the observed text. Final fare and baggage details still need inspection. The runner stops when it cannot recognise complete return-itinerary cards. It must be adapted and checked against a reachable live page before it can be called a working Trip.com feed. No automatic searches or notifications have been enabled.
+**Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. An uploaded live card diagnostic now confirms separate outbound selection cards. The first outbound-to-return transition is implemented and tested against that captured layout; return cards have also been captured and their Select step is tested against the observed text. Fare panels have now been captured; their per-leg weight allowances and checked-inclusive exclusion are supported. The multi-step runner now parses captured outbound, return and fare-package layouts. A complete automatic run against live Trip.com is still pending verification on the user’s Windows browser. It stops on unsupported panels, mismatched totals, unverified dates or access challenges. No automatic searches or notifications have been enabled.
 
 The [browser-agent guide](BROWSER_AGENT.md) describes the exact parser requirements and verification limits.
 
@@ -50,7 +50,7 @@ python browser_agent.py scan --headed --max-pairs 1
 
 The login command opens a browser. Sign in yourself; do not share your password or the ignored `browser_data/` directory. The single-search command attempts one date pair and stops on unsupported content, login challenges or verification. Do not expand coverage until that first live test succeeds.
 
-A manually started batch can continue with `--resume --max-pairs 10`. Checkpoints advance only after valid imports. A search plan change invalidates its checkpoint. The dashboard displays browser status and incomplete coverage. Only complete rendered cards are captured; no claim is made that every fare variant or flight in Trip.com's inventory is visible.
+A manually started batch can continue with `--resume --max-pairs 10`. Checkpoints advance only after valid imports. A search plan change invalidates its checkpoint. The runner inspects each visible nonstop candidate combination, preserves confirmed baggage exclusions, and does not click the fare-package Select/Book control. Missing flight numbers are labelled explicitly rather than invented. The dashboard displays browser status and incomplete coverage. Only complete rendered cards are captured; no claim is made that every fare variant or flight in Trip.com's inventory is visible.
 
 ## Agent tools and imports
 
