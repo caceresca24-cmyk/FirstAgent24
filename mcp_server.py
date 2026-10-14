@@ -4,7 +4,7 @@ import app
 TOOLS=[
  dict(name='get_search_plan',description='Read BNE-DPS search windows and filtering rules. Use your own authorised Trip.com connection to retrieve data.',inputSchema=dict(type='object',properties={},additionalProperties=False)),
  dict(name='get_flight_dashboard',description='Read stored fares, history, alerts, provider status and coverage.',inputSchema=dict(type='object',properties={},additionalProperties=False)),
- dict(name='import_trip_result',description='Persist an actual structured Trip.com one-way economy response. Detect price drops. Do not fabricate observations.',inputSchema=dict(type='object',properties=dict(result=dict(type='object')),required=['result'],additionalProperties=False)),
+ dict(name='import_trip_result',description='Persist an actual structured Trip.com economy response with complete outbound and return legs. Detect price drops. Do not fabricate observations.',inputSchema=dict(type='object',properties=dict(result=dict(type='object')),required=['result'],additionalProperties=False)),
  dict(name='generate_flight_report',description='Save and return a top-five report from stored observations. Does not send messages or book travel.',inputSchema=dict(type='object',properties={},additionalProperties=False))]
 def dispatch(method,p):
     if method=='initialize': return dict(protocolVersion='2024-11-05',capabilities=dict(tools=dict(listChanged=False)),serverInfo=dict(name='bali-flight-agent',version='1.0.0'))

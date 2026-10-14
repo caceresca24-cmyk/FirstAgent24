@@ -8,6 +8,9 @@ FIXTURE=json.loads((app.ROOT/'examples'/'initial-trip-result.json').read_text())
 class Monitor(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.old=app.DB; app.DB=Path(self.tmp.name)/'test.sqlite'
+        with app.connect() as c:
+            legacy=dict(app.DEFAULT,trip_type='oneWay',exclude_checked=False)
+            c.execute('UPDATE settings SET value=? WHERE id=1',(json.dumps(legacy),))
         self.p=copy.deepcopy(FIXTURE); self.p['observed_at']=(datetime.now(timezone.utc)-timedelta(minutes=3)).isoformat()
     def tearDown(self): app.DB=self.old; self.tmp.cleanup()
     def altered(self,price=170,run='second'):
@@ -43,7 +46,7 @@ class Monitor(unittest.TestCase):
         self.p['observed_at']=(datetime.now(timezone.utc)-timedelta(days=2)).isoformat(); app.ingest(self.p)
         self.assertTrue(all(f['stale'] for f in app.state()['fares'])); self.assertIn('stale',app.report()['text'])
     def test_plan_chunks(self):
-        for w in app.plan()['windows']: self.assertEqual(w['start'][:7],w['end'][:7])
+        for pair in app.plan()['pairs']: self.assertTrue(7<=pair['stay_days']<=10)
     def test_no_fake_provider_success(self):
         with patch.dict(os.environ,{},clear=True):
             with self.assertRaises(ValueError): app.refresh()
@@ -51,7 +54,7 @@ class Monitor(unittest.TestCase):
         t=datetime(2026,10,16,9,tzinfo=app.TZ)
         with patch.object(app,'refresh',return_value=[]):
             self.assertEqual(len(app.scheduler_tick(t)),2); self.assertEqual(app.scheduler_tick(t),[])
-            self.assertEqual(app.scheduler_tick(datetime(2026,12,15,9,tzinfo=app.TZ)),[])
+            self.assertEqual(app.scheduler_tick(datetime(2026,12,16,9,tzinfo=app.TZ)),[])
         with app.connect() as c:
             s=app.settings(c); s['paused']=True; c.execute('UPDATE settings SET value=? WHERE id=1',(json.dumps(s),))
         self.assertEqual(app.scheduler_tick(datetime(2026,10,17,9,tzinfo=app.TZ)),[])

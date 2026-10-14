@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parent
 DB=Path(os.environ.get('FLIGHT_DB',str(ROOT/'data'/'flights.sqlite')))
 TZ=ZoneInfo('Australia/Brisbane')
-DEFAULT=dict(start='2026-10-14',end='2026-12-14',currency='USD',target=180,drop_percent=5,nonstop=True,carry_on=True,daily_hour=8,weekly_hour=9,paused=False)
+DEFAULT=dict(start='2026-10-15',end='2026-12-15',currency='USD',target=180,drop_percent=5,nonstop=True,carry_on=True,daily_hour=8,weekly_hour=9,paused=False,trip_type='roundTrip',min_stay=7,max_stay=10,exclude_checked=True)
 def now(): return datetime.now(timezone.utc).isoformat()
 def connect():
     DB.parent.mkdir(parents=True,exist_ok=True)
@@ -21,7 +21,14 @@ def connect():
     CREATE TABLE IF NOT EXISTS reports(id TEXT PRIMARY KEY,created TEXT NOT NULL,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,status TEXT NOT NULL,updated TEXT NOT NULL);''')
     c.execute('INSERT OR IGNORE INTO settings VALUES(1,?)',(json.dumps(DEFAULT),)); c.commit(); return c
-def settings(c): return json.loads(c.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+def settings(c):
+    stored=json.loads(c.execute('SELECT value FROM settings WHERE id=1').fetchone()[0])
+    # Preserve old thresholds/history while applying the user's new trip rules once.
+    if 'trip_type' not in stored:
+        stored.update(trip_type='roundTrip',min_stay=7,max_stay=10,exclude_checked=True,
+                      start='2026-10-15',end='2026-12-15',nonstop=True,carry_on=True)
+        c.execute('UPDATE settings SET value=? WHERE id=1',(json.dumps(stored),))
+    return dict(DEFAULT,**stored)
 def validate_settings(v):
     if set(v)!=set(DEFAULT): raise ValueError('All settings fields required; unknown fields rejected.')
     if date.fromisoformat(v['start'])>date.fromisoformat(v['end']): raise ValueError('Invalid date window.')
@@ -31,7 +38,9 @@ def validate_settings(v):
     if v['drop_percent']>100: raise ValueError('Percentage exceeds 100.')
     for k in ('daily_hour','weekly_hour'):
         if type(v[k]) is not int or not 0<=v[k]<=23: raise ValueError('Hours must be 0–23.')
-    for k in ('nonstop','carry_on','paused'):
+    if v['trip_type'] not in ('oneWay','roundTrip'): raise ValueError('Invalid trip type.')
+    if type(v['min_stay']) is not int or type(v['max_stay']) is not int or not 1<=v['min_stay']<=v['max_stay']<=30: raise ValueError('Stay must be 1–30 days.')
+    for k in ('nonstop','carry_on','paused','exclude_checked'):
         if type(v[k]) is not bool: raise ValueError('Filters must be boolean.')
     return v
 def safe_url(v):
@@ -44,30 +53,48 @@ def normalize(p):
     f=q.get('flight',q)
     if not isinstance(f,dict): raise ValueError('Flight result must be an object.')
     if f.get('success') is not True or not isinstance(f.get('flights'),list): raise ValueError('Successful structured Trip.com response required.')
-    if f.get('tripType','oneWay')!='oneWay' or len(f['flights'])>1000: raise ValueError('Invalid one-way result batch.')
+    trip_type=f.get('tripType','oneWay')
+    if trip_type not in ('oneWay','roundTrip') or len(f['flights'])>1000: raise ValueError('Invalid trip result batch.')
     out=[]
     for x in f['flights']:
         journals=x.get('journalList',[])
-        if len(journals)!=1: raise ValueError('One complete journey required per offer.')
-        j=journals[0]['journal']; seg=journals[0]['segments']
-        if j['departCity']!='BNE' or j['arriveCity']!='DPS': raise ValueError('Only BNE → DPS is supported.')
-        if j.get('cabinClass') not in ('Y','economy','Economy'): raise ValueError('Economy offers only.')
-        dep=datetime.fromisoformat(j['departTime']); datetime.fromisoformat(j['arriveTime'])
+        if len(journals)!=(2 if trip_type=='roundTrip' else 1): raise ValueError('Complete outbound and return journeys required.')
+        legs=[]
+        for i,item in enumerate(journals):
+            j=item['journal']; seg=item['segments']; origin,dest=('BNE','DPS') if i==0 else ('DPS','BNE')
+            if j['departCity']!=origin or j['arriveCity']!=dest: raise ValueError('Only BNE ↔ DPS is supported.')
+            if j.get('cabinClass') not in ('Y','economy','Economy'): raise ValueError('Economy offers only.')
+            dep=datetime.fromisoformat(j['departTime']); datetime.fromisoformat(j['arriveTime'])
+            if not seg or type(j['duration']) is not int or j['duration']<=0: raise ValueError('Missing duration or segments.')
+            bag=j.get('baggageAllowance',{}); carry=bag.get('hasCarryOn'); checked=bag.get('hasCheckedBaggage')
+            if any(v is not None and type(v) is not bool for v in (carry,checked)): raise ValueError('Invalid baggage allowance.')
+            direct=j.get('isTransfer') is False and len(seg)==1 and seg[0].get('isStop') is False
+            legs.append(dict(date=dep.date().isoformat(),depart=j['departTime'],arrive=j['arriveTime'],
+                airline=' / '.join(dict.fromkeys(t['airlineName'] for t in seg)),flight=' / '.join(t.get('flightNo') or (t['airlineName']+' · flight number not shown') for t in seg),
+                duration=j['duration'],nonstop=direct,carry_on=carry,checked=checked))
         price=x['price']; currency=x.get('currency')
         if type(price) not in (int,float) or not math.isfinite(price) or price<=0: raise ValueError('Invalid price.')
         if currency not in ('USD','AUD','CNY','EUR','GBP','SGD','IDR'): raise ValueError('Missing or unsupported currency.')
-        if not seg or type(j['duration']) is not int or j['duration']<=0: raise ValueError('Missing duration or segments.')
-        bag=j.get('baggageAllowance',{}); carry=bag.get('hasCarryOn')
-        if carry is not None and type(carry) is not bool: raise ValueError('Invalid carry-on allowance.')
-        direct=j.get('isTransfer') is False and len(seg)==1 and seg[0].get('isStop') is False
-        key=hashlib.sha256(json.dumps([j['departTime'],[s['flightNo'] for s in seg],currency,carry,j['cabinClass']]).encode()).hexdigest()[:24]
-        out.append(dict(key=key,date=dep.date().isoformat(),depart=j['departTime'],arrive=j['arriveTime'],
-            airline=' / '.join(dict.fromkeys(s['airlineName'] for s in seg)),flight=' / '.join(s['flightNo'] for s in seg),
-            price=price,currency=currency,duration=j['duration'],nonstop=direct,carry_on=carry,checked=bag.get('hasCheckedBaggage'),
-            url=safe_url(x.get('deeplinkUrls',{}).get('onlineUrl'))))
+        stay=(date.fromisoformat(legs[-1]['date'])-date.fromisoformat(legs[0]['date'])).days if len(legs)==2 else None
+        if stay is not None and stay<=0: raise ValueError('Return must follow departure.')
+        def combined(field):
+            values=[leg[field] for leg in legs]
+            return True if all(v is True for v in values) else False if any(v is False for v in values) else None
+        checked=True if any(leg['checked'] is True for leg in legs) else False if all(leg['checked'] is False for leg in legs) else None
+        key=hashlib.sha256(json.dumps([[(leg['depart'],leg['flight'],leg['carry_on'],leg['checked']) for leg in legs],currency,trip_type]).encode()).hexdigest()[:24]
+        out.append(dict(legs[0],key=key,legs=legs,trip_type=trip_type,return_date=legs[-1]['date'] if len(legs)==2 else None,stay_days=stay,
+            airline=' / '.join(dict.fromkeys(leg['airline'] for leg in legs)),flight=' ↔ '.join(leg['flight'] for leg in legs),
+            price=price,currency=currency,duration=sum(leg['duration'] for leg in legs),nonstop=all(leg['nonstop'] for leg in legs),
+            carry_on=combined('carry_on'),checked=checked,url=safe_url(x.get('deeplinkUrls',{}).get('onlineUrl'))))
     return out,f
+
 def eligible(f,s):
-    return max(s['start'],datetime.now(TZ).date().isoformat())<=f['date']<=s['end'] and f['currency']==s['currency'] and (not s['nonstop'] or f['nonstop']) and (not s['carry_on'] or f['carry_on'] is True)
+    return (max(s['start'],datetime.now(TZ).date().isoformat())<=f['date']<=s['end']
+        and f.get('trip_type','oneWay')==s['trip_type'] and f['currency']==s['currency']
+        and (s['trip_type']=='oneWay' or s['min_stay']<=f.get('stay_days',0)<=s['max_stay'])
+        and (not s['nonstop'] or f['nonstop']) and (not s['carry_on'] or f['carry_on'] is True)
+        and (not s['exclude_checked'] or f['checked'] is False))
+
 def latest(c):
     result=[]; seen=set()
     for r in c.execute('SELECT f.value,r.observed,r.source,r.id FROM fares f JOIN runs r ON f.run_id=r.id ORDER BY r.observed DESC,r.rowid DESC'):
@@ -81,7 +108,7 @@ def ingest(p,source='Trip.com live tool'):
     observed=dt.astimezone(timezone.utc).isoformat()
     rid=p.get('run_id') or meta.get('transactionId') or hashlib.sha256(json.dumps(p,sort_keys=True).encode()).hexdigest()
     if not isinstance(rid,str) or len(rid)>200: raise ValueError('Invalid run ID.')
-    coverage=json.dumps(dict(date=meta.get('queryDepartDate'),query=meta.get('rawQuery',''),scope='Returned offers only; not exhaustive calendar coverage'))
+    coverage=json.dumps(dict(date=meta.get('queryDepartDate'),return_date=meta.get('queryReturnDate'),query=meta.get('rawQuery',''),scope='Returned offers only; not exhaustive calendar coverage'))
     with connect() as c:
         if c.execute('SELECT 1 FROM runs WHERE id=?',(rid,)).fetchone(): return dict(imported=0,duplicate=True,alerts=[])
         s=settings(c); old={f['key']:f for f in latest(c) if f['source']!='Conversation baseline'}
@@ -104,14 +131,29 @@ def ingest(p,source='Trip.com live tool'):
         return dict(imported=len(fares),duplicate=False,alerts=messages)
 def state():
     with connect() as c:
-        s=settings(c); fares=sorted((f for f in latest(c) if eligible(f,s)),key=lambda f:(not f['nonstop'],f['price'],f['duration']))
-        for f in fares: f['stale']=(datetime.now(timezone.utc)-datetime.fromisoformat(f['observed'])).total_seconds()>86400
+        s=settings(c); observed=latest(c)
+        for f in observed: f['stale']=(datetime.now(timezone.utc)-datetime.fromisoformat(f['observed'])).total_seconds()>86400
+        fares=sorted((f for f in observed if eligible(f,s)),key=lambda f:(not f['nonstop'],f['price'],f['duration']))
+        # Compare within each original currency, retaining the user's baggage rules
+        # for qualification while making rejected/unknown offers visible.
+        comparison=[]
+        for f in observed:
+            if not eligible(f,dict(s,currency=f['currency'],carry_on=False,exclude_checked=False)): continue
+            reasons=[]
+            if s['carry_on'] and f['carry_on'] is not True: reasons.append('Carry-on excluded' if f['carry_on'] is False else 'Carry-on unknown')
+            if s['exclude_checked'] and f['checked'] is not False: reasons.append('Checked baggage included' if f['checked'] is True else 'Checked baggage unknown')
+            if f['currency']!=s['currency']: reasons.append(f"Quoted in {f['currency']}; current search uses {s['currency']}")
+            comparison.append(dict(f,qualifies=eligible(f,s),reasons=reasons))
+        comparison.sort(key=lambda f:(f['currency']!=s['currency'],f['currency'],f['price'],f['duration']))
+        ranks={}
+        for f in comparison:
+            ranks[f['currency']]=ranks.get(f['currency'],0)+1;f['rank']=ranks[f['currency']]
         runs=[dict(r) for r in c.execute('SELECT * FROM runs ORDER BY observed DESC LIMIT 40')]; history=[]
         for r in reversed(runs):
             rows=[json.loads(v[0]) for v in c.execute('SELECT value FROM fares WHERE run_id=?',(r['id'],))]
             prices=[f['price'] for f in rows if eligible(f,s)]
             if prices: history.append(dict(observed=r['observed'],price=min(prices),source=r['source']))
-        return dict(settings=s,fares=fares,history=history,runs=runs,
+        return dict(settings=s,fares=fares,comparison=comparison,best_match=fares[0] if fares else None,lowest_observed=comparison[0] if comparison else None,excluded=[f for f in observed if f.get('trip_type')==s['trip_type'] and (f.get('checked') is True or f.get('carry_on') is False)],verification=[f for f in observed if f.get('trip_type')==s['trip_type'] and (f.get('carry_on') is None or f.get('checked') is None)],browser_status=browser_status(),history=history,runs=runs,
             alerts=[dict(r) for r in c.execute('SELECT * FROM alerts ORDER BY created DESC LIMIT 30')],
             reports=[dict(r) for r in c.execute('SELECT * FROM reports ORDER BY created DESC LIMIT 10')],
             jobs=[dict(r) for r in c.execute('SELECT * FROM jobs ORDER BY updated DESC LIMIT 10')],
@@ -131,13 +173,20 @@ def report():
     rid=datetime.now(TZ).date().isoformat()
     with connect() as c: c.execute('INSERT OR REPLACE INTO reports VALUES(?,?,?)',(rid,now(),text))
     return dict(id=rid,text=text)
+def browser_status():
+    path=DB.parent/'browser-status.json'
+    try: return json.loads(path.read_text())
+    except (OSError,ValueError): return dict(status='not_started',message='Browser agent has not run.')
 def plan():
-    s=state()['settings']; start=max(date.fromisoformat(s['start']),datetime.now(TZ).date()); end=date.fromisoformat(s['end']); windows=[]
+    with connect() as c: s=settings(c)
+    start=max(date.fromisoformat(s['start']),datetime.now(TZ).date()); end=date.fromisoformat(s['end']); pairs=[]
     while start<=end:
-        next_month=(start.replace(day=28)+timedelta(days=4)).replace(day=1); last=min(end,next_month-timedelta(days=1))
-        windows.append(dict(start=start.isoformat(),end=last.isoformat())); start=last+timedelta(days=1)
-    return dict(route='BNE-DPS',passengers=dict(adults=1,children=0,infants=0),cabin='economy',trip_type='oneWay',windows=windows,settings=s,
-        instructions='Flexible Trip.com search per window; flexible search has no baggage/nonstop filters. Verify shortlisted dates with exact search and hasCarryOnBaggage=true. Submit actual structured results. Never assume currency or baggage. No automatic booking.')
+        for stay in range(s['min_stay'],s['max_stay']+1):
+            pairs.append(dict(depart=start.isoformat(),return_date=(start+timedelta(days=stay)).isoformat(),stay_days=stay))
+        start+=timedelta(days=1)
+    return dict(route='BNE-DPS',passengers=dict(adults=1,children=0,infants=0),cabin='economy',trip_type=s['trip_type'],pairs=pairs,
+        settings=s,instructions='Search every date pair, nonstop both ways, carry-on confirmed both ways, checked baggage explicitly excluded both ways. Store round-trip total, not a one-way or per-leg price. Unknown baggage requires verification. Never book or bypass login/CAPTCHA.')
+
 def refresh():
     command=os.environ.get('FLIGHT_PROVIDER_COMMAND')
     if not command: raise ValueError('Unattended provider not configured. Import agent results or configure a supported adapter. ChatGPT plugins are not public APIs.')

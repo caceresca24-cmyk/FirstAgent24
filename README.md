@@ -1,120 +1,94 @@
 # Bali Watch
 
-A runnable local app for your Brisbane → Bali flight-monitoring agent. Python 3.11+; no packages or API key required for the dashboard. Uses SQLite for durable history, deterministic filtering and price-drop alerts. A local MCP server gives an agent tools to read the brief, submit actual Trip.com observations and generate reports.
+A Brisbane ↔ Bali return-flight dashboard with SQLite history, price-drop alerts, reports, MCP database tools and a Playwright browser search runner.
 
-## Run
+## Your search rules
 
-From this folder:
+- One adult, economy; BNE ↔ DPS.
+- Departures 15 October–15 December 2026; return 7–10 days later, up to 25 December.
+- Nonstop and carry-on included in both directions.
+- Exclude fares with checked baggage included on either leg. Unknown baggage stays flagged for verification.
+- Compare complete return totals in the same currency; never compare a one-way quote with a return total.
 
-```sh
-python app.py serve
-```
+## Current readiness
 
-Open **http://127.0.0.1:8765**. The optional sample observation contains the live Trip.com search checked on 14 October 2026: five offers for 8 November, including four qualifying nonstop flights with cabin baggage. Batik Air OD158 was USD 187. This is a point-in-time observation, not a continuously refreshed feed. It is NOT a complete October–December calendar search.
+**48 tests pass**, including eighteen real Chromium tests using synthetic pages. Database ingestion, return-trip filtering, browser navigation/checkpointing and verification stops are tested.
 
-### In GitHub Codespaces
+**Live Trip.com extraction is not verified.** The development network proxy returns HTTP 403 on connections to Trip.com. An uploaded live card diagnostic now confirms separate outbound selection cards. The first outbound-to-return transition is implemented and tested against that captured layout; return cards have also been captured and their Select step is tested against the observed text. Fare panels have now been captured; their per-leg weight allowances and checked-inclusive exclusion are supported. The multi-step runner now parses captured outbound, return and fare-package layouts. A complete automatic run against live Trip.com is still pending verification on the user’s Windows browser. It stops on unsupported panels, mismatched totals, unverified dates or access challenges. No automatic searches or notifications have been enabled.
 
-Run these commands in your Codespaces terminal:
+The [browser-agent guide](BROWSER_AGENT.md) describes the exact parser requirements and verification limits.
+
+## Dashboard in Codespaces
+
+Python 3.11+; the dashboard itself needs no third-party packages.
 
 ```sh
 git fetch origin
-git checkout flight-monitor
+git checkout browser-flight-agent
 git pull --ff-only
 python app.py serve
 ```
 
-In **Ports**, forward port **8765**, keep its visibility **Private**, and choose **Open in Browser**. Leave the terminal running. The app automatically accepts this Codespace's forwarded HTTPS origin using GitHub's environment variables. It does not accept arbitrary forwarded hosts. Do not switch the port to Public: the dashboard relies on Codespaces' private access gate.
+Open port **8765** from the Ports tab and keep it **Private**. On your own computer, open http://127.0.0.1:8765. Leave the server terminal running. Refresh dashboard only reloads saved observations—it does not run a search.
 
-The dashboard starts empty. To view the saved example search, run `python app.py import examples/initial-trip-result.json` in a second terminal, then click **Refresh dashboard**.
+The SQLite database is in `data/flights.sqlite`. Existing history and thresholds are preserved; old settings receive the new return-trip rules. The old one-way example under `examples/` is kept for provenance and is excluded from return results. On Windows, install `tzdata` if Python reports missing timezone data.
 
-If starting with a clean database, import the provided observation once:
+## Browser agent
 
 ```sh
-python app.py import examples/initial-trip-result.json
+python -m pip install -r requirements-browser.txt
+python -m playwright install chromium
+python browser_agent.py plan
 ```
 
-Python must have IANA timezone data for Australia/Brisbane. On Windows, `python -m pip install tzdata` may be needed. All departure/arrival times are local to each airport; schedules use Brisbane time.
+Interactive login needs a graphical desktop; normal Codespaces does not provide one. Your existing browser tab's Trip.com login is separate from the agent's profile. For first live verification, use a desktop computer and run both the dashboard and agent there so they share the database:
 
-## What works
+```sh
+python browser_agent.py login
+python browser_agent.py scan --headed --max-pairs 1
+```
 
-- BNE → DPS, one adult, one-way economy, departure window 14 October–14 December 2026.
-- Configurable nonstop and confirmed cabin-baggage filters. Unknown baggage is excluded when confirmation is required. Checked baggage is not required.
-- USD/AUD quote selection without unverified currency conversion. Other currencies remain stored but do not enter USD/AUD rankings.
-- Latest observed offer per flight/date/baggage/currency; observations older than 24 hours are marked stale.
-- Persistent history, threshold crossing and meaningful percentage-drop alerts, duplicate-import protection, new lowest observed fare detection.
-- Top-five reports, including observation freshness. Reports rank observed offers, not every possible market fare.
-- Downloadable search brief, JSON import, agent CLI, bearer-protected write API, stdio MCP tools, optional scheduled adapter runner.
-- Local-only server binding, Host validation, same-origin browser writes, CSRF protection, safe Trip.com links, no remote scripts.
+The login command opens a browser. Sign in yourself; do not share your password or the ignored `browser_data/` directory. The single-search command attempts one date pair and stops on unsupported content, login challenges or verification. Do not expand coverage until that first live test succeeds.
 
-No automatic booking. Alerts stay in the app; external email/push is not configured. The reference's existing ChatGPT scheduled tasks were not inspected or changed.
+A manually started batch can continue with `--resume --max-pairs 10`. Checkpoints advance only after valid imports. A search plan change invalidates its checkpoint. The runner inspects each visible nonstop candidate combination, preserves confirmed baggage exclusions, and does not click the fare-package Select/Book control. Missing flight numbers are labelled explicitly rather than invented. The dashboard displays browser status and incomplete coverage. Only complete rendered cards are captured; no claim is made that every fare variant or flight in Trip.com's inventory is visible.
 
-## Connect an agent
+## Agent tools and imports
 
-Register the local MCP server with an MCP-capable client. Replace the path with this folder's absolute path:
+The stdio MCP server exposes `get_search_plan`, `get_flight_dashboard`, `import_trip_result` and `generate_flight_report`:
 
 ```json
-{
-  "mcpServers": {
-    "bali-flight-agent": {
-      "command": "python",
-      "args": ["/absolute/path/bali-flight-agent/mcp_server.py"]
-    }
-  }
-}
+{"mcpServers":{"bali-flight-agent":{"command":"python","args":["/absolute/path/FirstAgent24/mcp_server.py"]}}}
 ```
 
-The stdio process has local database access. Use only in a trusted client. This server exposes the monitor's operations; it does not acquire Trip.com credentials or grant Trip.com search access. The agent needs its own supported Trip.com connection. Tools: `get_search_plan`, `get_flight_dashboard`, `import_trip_result`, `generate_flight_report`.
-
-See **AGENT.md** for the full workflow. CLI alternatives:
+The database interface does not grant Trip.com access. An authorised agent can also use:
 
 ```sh
 python app.py plan
 python app.py import result.json
-python app.py state
 python app.py report
 ```
 
-For HTTP agents, set a random `FLIGHT_AGENT_TOKEN` in the server's environment, then use `Authorization: Bearer <token>` on POST `/api/import`, `/api/report`, or `/api/refresh`. GET `/api/plan` and `/api/state` are local reads. Store tokens in your secret manager, not in source. `/api/settings` accepts the complete settings object. The server binds only to localhost; do not expose it publicly without a production authentication and TLS layer.
+Import structured Trip.com responses with `flight.success=true`, `tripType=roundTrip` and two reciprocal journals. Preserve provider currency, complete trip total, actual timezone-aware `observed_at` and transaction/run IDs. Failed or incomplete results must not be disguised as successful empty searches.
 
-## Unattended monitoring: connection still required
+The localhost HTTP API allows reads at `/api/state` and `/api/plan`. Agent writes require an environment-provided `FLIGHT_AGENT_TOKEN` and `Authorization: Bearer <token>`. Browser writes use same-origin CSRF protection. The server binds to localhost; Codespaces access must stay Private. Do not publicly expose the development server.
 
-**Not activated.** The Trip.com plugin callable in this chat is not a public Python API. Sites eligibility discovery and publishing helpers were not available in this environment, so no hosted app, cloud schedule, remote notification service or unattended Trip.com integration has been deployed.
+## Scheduling
 
-The app provides an adapter boundary for a supported provider or a tool-enabled agent runner. Configure `FLIGHT_PROVIDER_COMMAND` as a JSON array of program arguments, for example `["python", "/absolute/path/your_authorised_adapter.py"]`. This is an administrator-controlled environment setting. The app never accepts provider commands from browser input and never runs them through a shell.
+Browser scanning is manually launched. It is not wired into the existing provider scheduler while live extraction remains unverified. The optional legacy `FLIGHT_PROVIDER_COMMAND` adapter reads a plan from stdin and returns an array of valid structured responses; it needs independent authorised data access. `python app.py scheduler` uses Brisbane time, daily at 08:00 and Fridays at 09:00, until the configured end date. Jobs are claimed once per date, including failures; inspect before retrying. Existing ChatGPT scheduled tasks are separate and unchanged.
 
-Adapter contract:
+Alerts and reports stay in this app; email/push delivery is not connected. No booking actions exist.
 
-1. Read the search plan JSON from stdin.
-2. Fetch data using your authorised source/tool connection; respect its limits and credentials.
-3. Write an array of actual structured Trip.com-compatible responses to stdout (max 2 MB). Each result must indicate `flight.success: true`, with actual currency, journals, segments and baggage flags. Empty successful searches are valid. Errors must produce a nonzero exit code, not invented or empty success data.
-4. Provide a unique `transactionId` or top-level `run_id` and timezone-aware `observed_at` for repeat-safe ingestion. Default observation time is import time.
-
-Then run:
-
-```sh
-python app.py refresh
-python app.py scheduler
-```
-
-Keep the scheduler alive separately from the web server, using your operating system's service manager. Defaults: daily at 08:00 and Fridays at 09:00 Brisbane time, stopping after 14 December. Each job is claimed once per date, including failures, to prevent blind automatic retries. Failed jobs remain visible; an explicit `refresh` is available after repair. A process crash can leave a job marked running; investigate before clearing its job row. Scheduler status is based on recorded executions, not process heartbeat. A configured adapter flag does not prove a healthy connection.
-
-No external delivery is implied by saving an alert or report. Add and test an authorised delivery adapter before relying on off-app notifications.
-
-## Verification
+## Tests
 
 ```sh
 python -m unittest discover -s tests -v
+node --check web/app.js
 ```
 
-The tests use temporary databases and mocked adapters; no live booking or notification is performed. A live Trip.com read and actual import were verified in the development session. Authenticated HTTP writes, same-origin browser writes and hostile Host/origin rejection passed local tests. Browser visual verification and unattended provider execution remain unverified. All 16 tests passed.
+Browser tests require Playwright and Chromium. CI installs them and runs the same tests. Browser fixtures are synthetic and are not evidence of real Trip.com prices, account login or current DOM compatibility.
 
-## Files and data
+## Ranking and changed currency
 
-`app.py` — database, validation, HTTP API, runner and scheduling.
-`mcp_server.py` — agent tools over stdio.
-`web/` — responsive dashboard.
-`data/flights.sqlite` — your persistent database; back it up while the app is stopped.
-`examples/initial-trip-result.json` — actual search response, not a mock.
-`AGENT.md` — repeatable agent workflow.
+The dashboard now ranks observed fares within each original currency, including baggage-excluded and unverified offers with explicit reasons. Best matching offer is separate from cheapest observed; neither label asserts whole-market coverage. USD and AUD are never numerically mixed or implicitly converted. The alert target does not hide higher-priced offers.
 
-To deploy elsewhere, copy this folder to a persistent machine and run the server locally, or put it behind a correctly configured authenticated reverse proxy after adapting the Host/origin checks. Do not treat the development server as public production hosting.
+Changing quote currency, date pairs or selectors invalidates a resume checkpoint. Start the next scan without `--resume`; saved observations remain. Changing the alert target alone does not invalidate the checkpoint. Existing USD quotes stay visible in the comparison while a fresh AUD scan retrieves AUD data.
