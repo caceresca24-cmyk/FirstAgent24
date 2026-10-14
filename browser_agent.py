@@ -20,8 +20,12 @@ def parse_selection_card(text):
     if len(times)!=2: return None
     carry=True if re.search(r'carry[- ]on baggage included',text,re.I) else False if re.search(r'carry[- ]on baggage (?:not included|excluded)',text,re.I) else None
     checked=True if re.search(r'checked baggage included',text,re.I) else False if re.search(r'checked baggage (?:not included|excluded)',text,re.I) else None
+    quotes=re.findall(r'(US\$|AU\$|AUD\s*|USD\s*)\s*([0-9][0-9,]*(?:\.\d{1,2})?)',text)
+    quoted_currency={'US$':'USD','AU$':'AUD','AUD':'AUD','USD':'USD'}
+    amount=float(quotes[0][1].replace(',','')) if len(quotes)==1 else None
     return dict(origin=airports[0],destination=airports[1],depart_time=times[0],arrive_time=times[1],
         nonstop=bool(re.search(r'\bNonstop\b',text,re.I)),carry_on=carry,checked=checked,
+        displayed_total=amount,currency=quoted_currency.get(quotes[0][0].strip()) if len(quotes)==1 else None,
         note='Single-leg choice only; displayed round-trip price is not a confirmed complete itinerary.')
 
 async def select_outbound(page,selectors):
@@ -39,6 +43,40 @@ async def select_outbound(page,selectors):
 
 async def wait_return_cards(page,selectors):
     await page.wait_for_function("s => [...document.querySelectorAll(s)].some(e => { const a=e.innerText.split(/\\n/).map(t=>t.trim()).filter(t=>t==='BNE'||t==='DPS'); return a.length===2 && a[0]==='DPS' && a[1]==='BNE'; }) || /captcha|verify you are human|sign in to continue/i.test(document.body.innerText)",arg=selectors['cards'],timeout=30000)
+
+async def select_return(page,selectors,currency):
+    """Inspect the cheapest visible nonstop return; unknown baggage stays unknown."""
+    blocked=blockage(await page.locator(selectors['text']).inner_text())
+    if blocked: raise ExtractionError(blocked)
+    cards=page.locator(selectors['cards']); candidates=[]
+    for i in range(await cards.count()):
+        text=await cards.nth(i).inner_text(); leg=parse_selection_card(text)
+        if not leg or (leg['origin'],leg['destination'])!=('DPS','BNE') or not leg['nonstop'] or leg['checked'] is True or leg['carry_on'] is False: continue
+        if leg['currency']!=currency or leg['displayed_total'] is None: continue
+        candidates.append((leg['displayed_total'],i,text,leg))
+    if not candidates: raise ExtractionError('No recognisable nonstop return candidate in the requested currency; no final fare selected.')
+    _,i,text,leg=min(candidates,key=lambda v:(v[0],v[1]))
+    card=cards.nth(i); button=card.get_by_role('button',name='Select',exact=True)
+    if await button.count()!=1: button=card.get_by_text('Select',exact=True)
+    if await button.count()!=1: raise ExtractionError('Cannot uniquely identify the return Select control.')
+    await button.click()
+    return dict(text=text,leg=leg,index=i)
+
+async def capture_fare_details(page):
+    """Read scoped fare/dialog panels only. Stop before passenger/checkout pages."""
+    if re.search(r'/(?:booking|order|passenger|payment|checkout)(?:/|\?|$)',page.url,re.I):
+        raise ExtractionError('Return selection reached a booking page. No passenger or payment page content was captured.')
+    selectors='[role="dialog"], [class*="fare-item"], [class*="FareItem"], [class*="package-item"], [class*="PackageItem"], [data-testid*="fare"]'
+    panels=page.locator(selectors); result=[]
+    for i in range(min(await panels.count(),20)):
+        panel=panels.nth(i)
+        if not await panel.is_visible(): continue
+        text=await panel.inner_text()
+        if not text.strip(): continue
+        # Avoid unrelated dialogs; no password/input values or session state are read.
+        if not re.search(r'baggage|carry[- ]on|fare|economy|round[- ]trip',text,re.I): continue
+        result.append(dict(text=text[:12000],tag=await panel.evaluate('(e)=>e.tagName'),buttons=await panel.locator('button,[role="button"]').all_text_contents()))
+    return result
 
 def search_url(pair,currency):
     return 'https://www.trip.com/flights/showfarefirst?'+urlencode(dict(dcity='BNE',acity='DPS',ddate=pair['depart'],rdate=pair['return_date'],triptype='RT',**{'class':'Y'},quantity=1,childqty=0,babyqty=0,curr=currency,locale='en-AU'))
@@ -161,7 +199,7 @@ async def run_scan(page,pairs,currency,selectors,limit,start_index=0,delay=15,sa
 async def browser_main(args):
     from playwright.async_api import async_playwright
     plan=app.plan(); pairs=plan['pairs']; s=plan['settings']
-    if args.command in ('scan','diagnose','diagnose-return') and (s['paused'] or s['trip_type']!='roundTrip' or not pairs): raise ExtractionError('Enable an unexpired return-trip watch first.')
+    if args.command in ('scan','diagnose','diagnose-return','diagnose-fare') and (s['paused'] or s['trip_type']!='roundTrip' or not pairs): raise ExtractionError('Enable an unexpired return-trip watch first.')
     profile=Path(args.profile).resolve(); profile.mkdir(parents=True,exist_ok=True)
     os.chmod(profile,0o700)
     selectors=dict(DEFAULT_SELECTORS)
@@ -177,7 +215,7 @@ async def browser_main(args):
         start=cp['next_index']
     def save(index):
         temp=checkpoint.with_suffix('.tmp'); temp.write_text(json.dumps(dict(identity=identity,next_index=index))); temp.replace(checkpoint)
-    launch=dict(headless=args.command not in ('login','diagnose','diagnose-return') and not args.headed)
+    launch=dict(headless=args.command not in ('login','diagnose','diagnose-return','diagnose-fare') and not args.headed)
     if args.executable: launch['executable_path']=args.executable
     # Preserve configured proxy policy when the environment uses one.
     proxy=os.environ.get('HTTPS_PROXY')
@@ -189,17 +227,25 @@ async def browser_main(args):
             if args.command=='login':
                 await page.goto('https://www.trip.com/',timeout=45000)
                 await asyncio.to_thread(input,'Sign in yourself in this browser, then press Enter here to save the session. ')
-            elif args.command in ('diagnose','diagnose-return'):
+            elif args.command in ('diagnose','diagnose-return','diagnose-fare'):
                 pair=pairs[0]
                 await page.goto(search_url(pair,s['currency']),wait_until='domcontentloaded',timeout=45000)
                 await asyncio.to_thread(input,'Wait for the flight results to appear. Leave the results visible, then press Enter here to capture flight-card text only. ')
                 selected=None
-                if args.command=='diagnose-return':
+                returned=None
+                if args.command in ('diagnose-return','diagnose-fare'):
                     selected=await select_outbound(page,selectors)
                     await wait_return_cards(page,selectors)
                     await asyncio.to_thread(input,'The agent selected an outbound flight for inspection, not booking. Wait for return results, then press Enter to capture their card text. ')
+                    if args.command=='diagnose-fare':
+                        returned=await select_return(page,selectors,s['currency'])
+                        # Allow an explicitly opened fare tab to become available.
+                        await page.wait_for_timeout(1500)
+                        if context.pages[-1]!=page: page=context.pages[-1]
+                        await asyncio.to_thread(input,'The agent selected a return for fare inspection only. Wait for fare details; open any visible Baggage allowance/details control if available. Do NOT enter passenger/payment details or click Book. Then press Enter here. ')
                 data=await capture_cards(page,selectors,pair,s['currency'])
-                data.update(step='return_selection' if selected else 'initial_results',selected_outbound=selected)
+                data.update(step='fare_details' if returned else 'return_selection' if selected else 'initial_results',selected_outbound=selected,selected_return=returned)
+                if returned: data['fare_panels']=await capture_fare_details(page)
                 path=save_diagnostics(data)
                 print(f'Saved {data["card_count"]} card(s) to {path}. Review the file before sharing; no flight observations were imported.',flush=True)
             else:
@@ -207,7 +253,7 @@ async def browser_main(args):
         finally: await context.close()
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__); p.add_argument('command',choices=['login','scan','plan','diagnose','diagnose-return'])
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('command',choices=['login','scan','plan','diagnose','diagnose-return','diagnose-fare'])
     p.add_argument('--profile',default=str(app.ROOT/'browser_data')); p.add_argument('--headed',action='store_true');p.add_argument('--resume',action='store_true')
     p.add_argument('--max-pairs',type=int,default=1);p.add_argument('--delay',type=float,default=15);p.add_argument('--selectors');p.add_argument('--executable')
     args=p.parse_args()

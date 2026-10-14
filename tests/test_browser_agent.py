@@ -132,3 +132,24 @@ class BrowserFlow(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(legs[0]['checked']);self.assertIsNone(legs[1]['checked']);self.assertIsNone(legs[1]['carry_on'])
         self.assertEqual(sum(v['nonstop'] for v in legs),2)
         self.assertFalse(legs[3]['nonstop']);self.assertTrue(legs[3]['carry_on'])
+    async def test_observed_return_prices_select_cheapest_nonstop_for_inspection(self):
+        import html
+        texts=json.loads((app.ROOT/'tests'/'fixtures'/'trip_return_cards.json').read_text(encoding='utf-8'))
+        await self.page.set_content(''.join('<article>'+html.escape(t).replace('\n','<br>')+'<button>Select</button></article>' for t in texts))
+        await self.page.locator('article').nth(2).locator('button').evaluate('(b)=>b.onclick=()=>document.body.insertAdjacentHTML("beforeend",`<div role="dialog">Economy fare details: checked baggage unknown</div>`)')
+        selected=await agent.select_return(self.page,agent.DEFAULT_SELECTORS,'USD')
+        self.assertEqual(selected['index'],2);self.assertEqual(selected['leg']['displayed_total'],1675)
+        self.assertIsNone(selected['leg']['checked']);self.assertIsNone(selected['leg']['carry_on'])
+        panels=await agent.capture_fare_details(self.page);self.assertEqual(len(panels),1)
+        self.assertEqual(app.state()['runs'],[])
+    async def test_return_selection_rejects_included_checked_baggage(self):
+        import html
+        texts=json.loads((app.ROOT/'tests'/'fixtures'/'trip_return_cards.json').read_text(encoding='utf-8'))
+        texts[2]='Checked baggage included\n'+texts[2]
+        await self.page.set_content(''.join('<article>'+html.escape(t).replace('\n','<br>')+'<button>Select</button></article>' for t in texts))
+        selected=await agent.select_return(self.page,agent.DEFAULT_SELECTORS,'USD')
+        self.assertEqual(selected['index'],1)
+    async def test_fare_capture_omits_header_and_other_dialogs(self):
+        await self.page.set_content('<header>Private account header</header><div role="dialog">Sign in password reset</div><div role="dialog">Baggage allowance: carry-on 7 kg</div>')
+        captured=await agent.capture_fare_details(self.page)
+        self.assertEqual(len(captured),1);self.assertNotIn('Private account',json.dumps(captured));self.assertNotIn('password reset',json.dumps(captured))
